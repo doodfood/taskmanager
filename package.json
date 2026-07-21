@@ -1,0 +1,17 @@
+{
+  "name": "taskmanager",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Household task manager — Express API (server/) + Next.js web app (web/)",
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,green \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "npm --prefix server run dev",
+    "dev:web": "npm --prefix web run dev",
+    "build": "npm --prefix server run build && npm --prefix web run build",
+    "test": "npm --prefix server test",
+    "lint": "npm --prefix server run lint && npm --prefix web run lint"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
