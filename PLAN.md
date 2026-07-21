@@ -1,8 +1,9 @@
 # Household Task Manager — Plan
 
-> **Status: backend ✅ complete & tested · frontend ⬜ not started**
-> Next up: build the Next.js web app (steps 7–12 below). Everything the frontend
-> needs is documented in §3 (as-built API contract) and §4 (frontend spec).
+> **Status: backend ✅ complete & tested · frontend ✅ built & verified live**
+> Next up: steps 13–14 (§7) — a definitions manager (view/edit recurring
+> templates) and a start date for tasks. Everything the frontend needed is
+> documented in §3 (as-built API contract) and §4 (frontend spec).
 
 ## 1. Overview
 
@@ -11,7 +12,7 @@ A household task manager with two deployable parts:
 | Part | Tech | Status |
 |------|------|--------|
 | `server/` | Node.js + Express + TypeScript | ✅ Built, 31/31 tests passing, lint clean, smoke-tested live |
-| `web/` | Next.js (App Router) + TypeScript + Tailwind | ⬜ Not started |
+| `web/` | Next.js 16 (App Router) + TypeScript + Tailwind v4 | ✅ Built, lint clean, verified live with the API |
 
 No authentication. The web app asks "who are you?" once and remembers the choice
 in `localStorage`. Trust-based, household-only.
@@ -143,12 +144,14 @@ directly — no SSR/data-fetching-on-server needed (keeps date spoofing simple).
 
 | # | Step | Done when |
 |---|------|-----------|
-| 7 | Scaffold `web/` (create-next-app) + `lib/api.ts` + `.env.local` | App renders, health check to API works |
-| 8 | `UserContext` + `/users` picker with localStorage | Identity persists across reloads; first visit forces picker |
-| 9 | Dashboard week view (grouped, overdue styling) | Sees own + anyone tasks for next 7 days |
-| 10 | `/tasks/new` form | Can create one-off + recurring, specific/anyone, offset |
-| 11 | Complete / reopen / reassign on `TaskCard` | Full lifecycle in UI |
-| 12 | `ClockSpoofer` + E2E smoke: seed data → spoof forward a week → verify recurrence & overdue rendering | Both apps verified together; update root README |
+| 7 ✅ | Scaffold `web/` (create-next-app) + `lib/api.ts` + `.env.local` | App renders, health check to API works |
+| 8 ✅ | `UserContext` + `/users` picker with localStorage | Identity persists across reloads; first visit forces picker |
+| 9 ✅ | Dashboard week view (grouped, overdue styling) | Sees own + anyone tasks for next 7 days |
+| 10 ✅ | `/tasks/new` form | Can create one-off + recurring, specific/anyone, offset |
+| 11 ✅ | Complete / reopen / reassign on `TaskCard` | Full lifecycle in UI |
+| 12 ✅ | `ClockSpoofer` + E2E smoke: seed data → spoof forward a week → verify recurrence & overdue rendering | Both apps verified together; root README written |
+| 13 ⬜ | Definitions manager: view/edit/deactivate/delete templates | See §7.1 |
+| 14 ⬜ | Start date on definitions (backend + form field) | See §7.2 |
 
 ## 5. Decisions & conventions (as built)
 
@@ -157,9 +160,9 @@ directly — no SSR/data-fetching-on-server needed (keeps date spoofing simple).
 - Server is ESM (`"type": "module"`), NodeNext resolution, relative imports use
   `.js` extensions. Tests: Vitest, temp-dir JSON storage per test, spoofed clock
   reset in `afterEach`.
-- The machine runs **Node v18.13** — eslint 9 warns but runs. ⚠️ Next.js 14
-  needs Node ≥18.17 and Next.js 15 needs ≥18.18: **upgrade Node to 20 LTS
-  before scaffolding the web app** (or expect create-next-app to fail).
+- The machine ran **Node v18.13** when the backend was built (eslint 9 warned
+  but ran). Upgraded to **Node 24** before scaffolding the web app — Next.js 16
+  requires a modern Node, so this was a hard prerequisite.
 
 ## 6. Future backlog (noticed during backend build — not yet scheduled)
 
@@ -177,8 +180,62 @@ directly — no SSR/data-fetching-on-server needed (keeps date spoofing simple).
 - **Notifications**: overdue nudges (email/push/Telegram), daily digest of
   today's tasks.
 - **PWA**: installable on phones, offline tolerance, quick-complete from home screen.
-- **Root tooling**: root `package.json` with `concurrently` to boot server+web
-  together; shared types package to avoid drift between `server/src/types.ts`
-  and the web app's types.
+- **Shared types package**: avoid drift between `server/src/types.ts` and
+  `web/src/lib/types.ts` (currently mirrored by hand). ~~Root tooling~~ done:
+  root `package.json` with `concurrently` boots server+web together.
 - **Rate of hydration**: scheduler is interval-based; could become cron-based
   (e.g. node-cron at 00:05) once exact semantics matter.
+
+---
+
+## 7. Next steps (planned)
+
+### 13. Definitions manager — `/tasks` page (frontend only)
+
+**Problem:** once a recurring template exists ("water plants weekly") there is
+no UI to view or edit it — the dashboard only shows hydrated instances, and
+editing a definition's properties (title, recurrence, assignee, offset) means
+hand-crafting API calls.
+
+The API is already complete for this (`GET/PATCH/DELETE /task-definitions`), so
+it's purely frontend work:
+
+- New page `web/src/app/tasks/page.tsx`: table of **all** definitions —
+  title, recurrence, assignee (badge), due offset, active state,
+  `lastHydratedDate`. Dashboard header gains a "Manage tasks" link.
+- Row actions: **edit** (inline expandable form reusing the `TaskForm` fields →
+  `PATCH /task-definitions/:id`), **deactivate/reactivate** (`active` toggle),
+  **delete** (confirm; pending instances are removed, completed stay as history).
+- Extract the form fields from `/tasks/new` into a shared `TaskForm` component
+  used by both create and edit.
+- Surface the snapshot caveat in the UI: edits apply to **future hydrations
+  only** — already-hydrated instances keep their snapshotted
+  title/description/assignee (§3 gotchas).
+
+### 14. Start date on definitions (backend + frontend)
+
+**Problem:** occurrences are always anchored on the creation date. "Recurs
+every 3 months, first instance 1 month from now" is currently impossible —
+recurring tasks anchor on `createdAt` and one-offs hydrate for `today`.
+
+Backend:
+- `TaskDefinition` gains `startDate: string | null` (yyyy-MM-dd; null/absent =
+  anchor on creation date — back-compatible with existing JSON files).
+- `POST /task-definitions` accepts optional `startDate`; validate `yyyy-MM-dd`.
+- `hydrateDefinition` (`server/src/services/hydrationService.ts`) anchors the
+  cursor on `startDate ?? localDate(createdAt)` instead of always
+  `localDate(createdAt)`. A future startDate naturally hydrates nothing until
+  the horizon catches up — no special-casing needed.
+- One-off tasks (`server/src/services/taskService.ts`): the single instance is
+  created with `occurrenceDate = startDate ?? today` instead of always today.
+- `PATCH` accepts `startDate` too. Document the caveat: after hydration has
+  begun, the `lastHydratedDate` watermark drives the series, so changing
+  `startDate` does not move already-hydrated instances (same snapshot
+  semantics as other edits).
+- Tests: one-off with a future date; weekly anchored to startDate; quarterly
+  starting next month; spoofed clock crossing the startDate; back-compat with
+  definitions lacking the field.
+
+Frontend:
+- `TaskForm` gains a "First occurrence on" date input (defaults to today).
+- Definitions manager (step 13) displays the start date.

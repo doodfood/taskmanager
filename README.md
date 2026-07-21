@@ -1,0 +1,46 @@
+# Household Task Manager
+
+Trust-based household chore tracker. Recurring task **definitions** (templates) hydrate concrete **instances** on a schedule; household members pick who they are (no auth) and check things off.
+
+## Repo layout
+
+| Path | What |
+|------|------|
+| `server/` | Express + TypeScript API — JSON-file persistence behind a storage-provider seam, hydration loop, spoofable clock. [Docs](server/README.md) |
+| `web/` | Next.js 16 (App Router) + TypeScript + Tailwind v4 frontend. [Docs](web/README.md) |
+| `PLAN.md` | Design doc, as-built API contract, roadmap |
+
+## Quick start
+
+```bash
+npm install          # root tooling (concurrently)
+npm run setup        # install server/ and web/ dependencies
+npm run dev          # boot API (:4000) + web (:3000) together
+```
+
+Open http://localhost:3000 — the first visit asks who you are (seeded users: Alex, Jordan, Sam, overridable via `SEED_USERS`). Delete `server/data/` to reset everything.
+
+## Scripts (root)
+
+| Command | Purpose |
+|---------|---------|
+| `npm run dev` | Boot server + web together |
+| `npm run dev:server` / `npm run dev:web` | Boot just one side |
+| `npm test` | Server test suite (Vitest, 31 tests) |
+| `npm run lint` | Lint both packages |
+| `npm run build` | Build both packages |
+
+## Scenario testing (spoofable clock)
+
+All server-side time reads go through a clock you can jump:
+
+- **UI**: the "clock spoofer" panel at the bottom of the dashboard.
+- **API**: `POST /api/debug/clock { "date": "2026-08-01" }` re-runs hydration immediately; `DELETE` resets to real time.
+
+Try it: create a daily task, jump a week forward — the missed occurrences materialise and the early ones render as overdue.
+
+## Status
+
+- Backend ✅ complete, 31/31 tests passing, lint clean
+- Frontend ✅ dashboard week view, new-task form, user picker, complete/reopen/reassign, clock spoofer
+- Next up: definitions manager (edit recurring templates) and start dates for tasks — see `PLAN.md` §7
