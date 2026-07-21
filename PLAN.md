@@ -1,200 +1,184 @@
 # Household Task Manager — Plan
 
+> **Status: backend ✅ complete & tested · frontend ⬜ not started**
+> Next up: build the Next.js web app (steps 7–12 below). Everything the frontend
+> needs is documented in §3 (as-built API contract) and §4 (frontend spec).
+
 ## 1. Overview
 
 A household task manager with two deployable parts:
 
-| Part | Tech | Responsibility |
-|------|------|----------------|
-| `server/` | Node.js + Express + TypeScript | Core API. Stores users, task definitions and task instances. Runs a hydration loop every 60 minutes to materialise recurring tasks. |
-| `web/` | Next.js (App Router) + TypeScript + Tailwind | Frontend. User picker, weekly task view, task creation, complete/reassign actions. |
+| Part | Tech | Status |
+|------|------|--------|
+| `server/` | Node.js + Express + TypeScript | ✅ Built, 31/31 tests passing, lint clean, smoke-tested live |
+| `web/` | Next.js (App Router) + TypeScript + Tailwind | ⬜ Not started |
 
-No authentication. The web app asks "who are you?" it doesn't remember the choice as the app will be used by different members in the same household, trust based only.
+No authentication. The web app asks "who are you?" once and remembers the choice
+in `localStorage`. Trust-based, household-only.
 
-All persistence is JSON files on disk, hidden behind a storage-provider interface so a real database can be dropped in later without touching business logic.
-
----
-
-## 2. Requirements
-
-### Functional
-
-1. **Users**
-   - Simple user records (name, optional avatar colour).
-   - Manageable via API; seeded on first run so the app is usable immediately.
-2. **Tasks**
-   - Created as **one-off** or **recurring** (daily, weekly, monthly, quarterly).
-   - Assigned to a **specific user** or to **anyone** (first person to complete it / visible to all).
-   - Due date set as **N days after creation/occurrence date** (e.g. "due 2 days after it appears").
-   - Title + optional description.
-3. **Hydration**
-   - A scheduler runs **every 60 minutes** (and once at boot).
-   - It scans active recurring task definitions and materialises any **task instances** that are now due to exist, so the UI always has concrete tasks to show.
-   - One-off tasks create their single instance immediately at creation time.
-4. **Task instances**
-   - Fetch pending tasks (filter by assignee, by date range).
-   - "My next 7 days" view — tasks due in the coming week for the selected user, including "anyone" tasks.
-   - **Complete** a task (records who completed it and when).
-   - **Reassign** a task instance to another user or back to "anyone".
-5. **Recurring lifecycle**
-   - When an instance of a recurring task is completed, the next occurrence is hydrated by the loop when its time comes (definition stays alive until deactivated).
-
-### Non-functional
-
-- **Modular storage**: all reads/writes go through a `StorageProvider` interface. `JsonFileStorage` is the only implementation for now; a `PostgresStorage`/`MongoStorage` can be added later by implementing the same interface and changing one config line.
-- **No auth**: user selection is a UI convenience, not a security boundary.
-- **Configurable**: ports, data directory, hydration interval via environment variables with sensible defaults.
-- **Time-zone aware**: dates handled in local server time (`Australia/Sydney`); due dates stored as ISO date strings.
+All persistence is JSON files on disk (`server/data/`), hidden behind a
+storage-provider interface so a real database can be dropped in later without
+touching business logic.
 
 ---
 
-## 3. Architecture
+## 2. What's built (backend)
 
-```
-taskmanager/
-├── PLAN.md                      ← this file
-├── server/                      ← Node.js API
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── data/                    ← JSON files live here (git-ignored, auto-created)
-│   │   ├── users.json
-│   │   ├── task-definitions.json
-│   │   └── task-instances.json
-│   └── src/
-│       ├── index.ts             ← entry: starts HTTP + scheduler
-│       ├── config.ts            ← env vars (port, data dir, interval)
-│       ├── types.ts             ← User, TaskDefinition, TaskInstance, enums
-│       ├── storage/
-│       │   ├── StorageProvider.ts   ← interface (the DB seam)
-│       │   └── JsonFileStorage.ts   ← JSON file implementation
-│       ├── services/
-│       │   ├── userService.ts
-│       │   ├── taskService.ts       ← CRUD for definitions & instances
-│       │   └── hydrationService.ts  ← recurrence math + materialisation
-│       ├── scheduler.ts         ← setInterval loop (60 min) + run-on-boot
-│       └── routes/
-│           ├── users.ts
-│           └── tasks.ts
-└── web/                         ← Next.js frontend
-    ├── package.json
-    └── src/
-        ├── app/
-        │   ├── page.tsx             ← dashboard (my week)
-        │   ├── layout.tsx
-        │   ├── users/page.tsx       ← switch user / manage users
-        │   └── tasks/new/page.tsx   ← create task
-        ├── components/
-        │   ├── UserPicker.tsx
-        │   ├── TaskCard.tsx
-        │   ├── WeekView.tsx
-        │   └── TaskForm.tsx
-        ├── context/UserContext.tsx  ← current user (localStorage)
-        └── lib/api.ts               ← fetch wrapper for the API
-```
+Run with `npm run dev` in `server/` → http://localhost:4000. See `server/README.md`
+for full docs. First run seeds users `Alex, Jordan, Sam` (override with `SEED_USERS` env var).
 
-### Data model
+- Express API with users / task-definitions / task-instances routers and a
+  consistent `{ "error": "..." }` shape with 400/404/409 statuses.
+- `StorageProvider` interface = the DB seam; `JsonFileStorage` implements it
+  (atomic writes, in-memory cache, write queue). Swap-in point is one line in
+  `server/src/index.ts`.
+- Hydration engine: **TaskDefinition** (recurring template) → **TaskInstance**
+  (concrete occurrence). Idempotent via `(definitionId, occurrenceDate)`
+  uniqueness. One-off tasks hydrate their single instance at creation time.
+- Scheduler: hydration runs at boot + every 60 min (`HYDRATION_INTERVAL_MS`).
+  Horizon: today + 1 day (`HYDRATION_HORIZON_DAYS`).
+- **Spoofable clock** for scenario testing (all time reads go through
+  `server/src/clock.ts`): boot-time via `SPOOF_DATE=2026-08-01`, or runtime via API:
+  - `GET /api/debug/clock` → `{ spoofed, spoofedDate, now, today }`
+  - `POST /api/debug/clock { "date": "2026-07-28" }` → sets clock **and re-runs
+    hydration immediately** (recurring tasks materialise as if time jumped);
+    response adds `hydrated: <count>`. `{"date": null}` or `DELETE` resets to real time.
+  - Date-only strings are anchored to local noon server-side (no TZ off-by-one).
+- Tooling: Vitest + supertest (`npm test`, 31 tests), ESLint 9 flat config
+  (`npm run lint`), `npm run typecheck`.
 
-**User**
-```json
-{ "id": "uuid", "name": "Akhil", "color": "#f59e0b", "createdAt": "ISO" }
-```
+## 3. As-built API contract (for the frontend)
 
-**TaskDefinition** (the template — what repeats)
-```json
-{
-  "id": "uuid",
-  "title": "Take bins out",
-  "description": "Red bin this week",
-  "recurrence": "none | daily | weekly | monthly | quarterly",
-  "assigneeId": "uuid | null",        // null = anyone
-  "dueOffsetDays": 1,                  // due N days after each occurrence appears
-  "active": true,
-  "lastHydratedDate": "2026-07-20",    // watermark to avoid duplicates
-  "createdAt": "ISO"
+Base URL `http://localhost:4000/api`, CORS open. Dates: `yyyy-MM-dd` strings for
+occurrence/due dates; full UTC ISO timestamps for `createdAt`/`completedAt`
+(**render these in local time** client-side).
+
+### Types
+
+```ts
+type Recurrence = 'none' | 'daily' | 'weekly' | 'monthly' | 'quarterly';
+
+interface User { id: string; name: string; color: string; createdAt: string }
+
+interface TaskDefinition {
+  id: string; title: string; description: string;
+  recurrence: Recurrence;
+  assigneeId: string | null;      // null = "anyone"
+  dueOffsetDays: number;          // due N days after each occurrence
+  active: boolean;
+  lastHydratedDate: string | null;
+  createdAt: string;
+}
+
+interface TaskInstance {
+  id: string; definitionId: string;
+  title: string; description: string;       // snapshot of the definition at hydration time
+  assigneeId: string | null;                // null = anyone
+  occurrenceDate: string;                   // yyyy-MM-dd
+  dueDate: string;                          // yyyy-MM-dd = occurrence + offset
+  status: 'pending' | 'completed';
+  completedBy: string | null; completedAt: string | null;
+  createdAt: string;
 }
 ```
 
-**TaskInstance** (the concrete, actionable task)
-```json
-{
-  "id": "uuid",
-  "definitionId": "uuid",
-  "title": "Take bins out",            // snapshot so edits to the template don't rewrite history
-  "description": "Red bin this week",
-  "assigneeId": "uuid | null",
-  "occurrenceDate": "2026-07-21",      // the day this occurrence is for
-  "dueDate": "2026-07-22",
-  "status": "pending | completed",
-  "completedBy": "uuid | null",
-  "completedAt": "ISO | null",
-  "createdAt": "ISO"
-}
-```
+### Endpoints
 
-### Hydration algorithm
+| Method | Path | Body / query | Notes |
+|--------|------|--------------|-------|
+| GET | `/health` | — | `{ ok, uptime }` |
+| GET | `/users` | — | List users |
+| POST | `/users` | `{ name, color? }` | Colour auto-assigned from a palette if omitted |
+| DELETE | `/users/:id` | — | 204 |
+| GET | `/task-definitions` | — | List templates |
+| POST | `/task-definitions` | `{ title, description?, recurrence?, assigneeId?, dueOffsetDays? }` | Defaults: `recurrence=none`, `assigneeId=null` (anyone), `dueOffsetDays=0`. One-offs hydrate instantly; recurring hydrates first occurrence(s) immediately |
+| PATCH | `/task-definitions/:id` | partial fields + `active?` | Edit / deactivate |
+| DELETE | `/task-definitions/:id` | — | Deletes template + its **pending** instances; completed stay as history |
+| GET | `/task-instances` | `status=`, `assigneeId=` (`null` string = anyone), `from=`, `to=` (dueDate range), `includeAnyone=true` | Sorted by dueDate then title |
+| GET | `/task-instances/upcoming` | `userId` (required), `days` (1–90, default 7) | **The dashboard endpoint**: pending tasks assigned to user OR anyone, `dueDate <= today + days`, **overdue included** |
+| POST | `/task-instances/:id/complete` | `{ completedBy: userId }` | 409 if already completed |
+| POST | `/task-instances/:id/reopen` | — | Back to pending |
+| POST | `/task-instances/:id/reassign` | `{ assigneeId: userId \| null }` | null = anyone |
+| GET/POST/DELETE | `/debug/clock` | see §2 | Date spoofing for scenario testing |
 
-Every 60 minutes (and at boot):
+Gotchas for the UI:
+- `upcoming` includes **overdue** pending tasks (dueDate < today) — style them.
+- Completing an "anyone" task records `completedBy` — show who did it.
+- Editing a definition does **not** rewrite already-hydrated instances
+  (title/description/assignee are snapshots). Intended behaviour.
+- Deleting a user does **not** cascade their `assigneeId` — instances can point
+  at a non-existent user. Handle unknown user ids gracefully (see §6 backlog).
 
-1. Load all `active` definitions.
-2. For each recurring definition, walk occurrence dates from `lastHydratedDate + 1 interval` (or `createdAt` date if never hydrated) up to **today + 1 day** (small lookahead so tomorrow's tasks are visible).
-3. For each occurrence date, if no instance already exists for `(definitionId, occurrenceDate)`, create one with `dueDate = occurrenceDate + dueOffsetDays`.
-4. Update `lastHydratedDate`. Uniqueness guard on `(definitionId, occurrenceDate)` makes the loop idempotent — safe to run at any frequency.
+## 4. Frontend spec (steps 7–12)
 
-Recurrence stepping: daily = +1 day, weekly = +7 days, monthly = +1 calendar month, quarterly = +3 calendar months.
+Scaffold `web/` with create-next-app (App Router, TS, Tailwind, ESLint).
+Point it at the API with `NEXT_PUBLIC_API_URL=http://localhost:4000/api` in
+`web/.env.local`. Wrap all fetches in `src/lib/api.ts` (typed, throws on
+`{ error }` responses). All pages are client components talking to the API
+directly — no SSR/data-fetching-on-server needed (keeps date spoofing simple).
 
-### API surface
+### Pages & components
 
-Base URL `http://localhost:4000/api`, CORS open.
+- **`/` dashboard** — header: current user chip + "switch" link, "New task"
+  button, spoofed-date banner when clock is spoofed. Body: next-7-days list
+  from `GET /task-instances/upcoming?userId=<me>&days=7`, grouped by dueDate
+  (labels: Overdue / Today / Tomorrow / weekday+date). Each `TaskCard`: title,
+  description, due date, assignee badge (user name+colour, or "Anyone"),
+  Complete button, reassign `<select>` (users + "Anyone"), reopen for completed.
+- **`/tasks/new`** — `TaskForm`: title, description, recurrence select
+  (one-off/daily/weekly/monthly/quarterly), assignee select (users + "Anyone"),
+  due offset (number input "due N days after"), submit → POST
+  `/task-definitions` → redirect to dashboard.
+- **`/users`** — `UserPicker` tiles (colour avatar + name); pick → save to
+  localStorage → redirect to `/`. Also add/remove users here.
+- **`src/context/UserContext.tsx`** — holds current user; on first visit (no
+  stored user) redirect to `/users` picker. Validate stored id still exists
+  against `GET /users` (it may have been deleted).
+- **`src/components/ClockSpoofer.tsx`** (dev tool) — read `GET /debug/clock`;
+  date input + "jump" / "reset" buttons hitting the POST/DELETE endpoints;
+  refresh dashboard data afterwards. This is how scenarios get tested.
+- Completed state: strike-through + "done by X at HH:mm" (local time).
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| GET | `/users` | List users |
-| POST | `/users` | Create user `{ name, color? }` |
-| DELETE | `/users/:id` | Remove user |
-| GET | `/task-definitions` | List task templates |
-| POST | `/task-definitions` | Create task (one-off hydrates immediately) |
-| PATCH | `/task-definitions/:id` | Edit / deactivate |
-| DELETE | `/task-definitions/:id` | Delete template (+ future pending instances) |
-| GET | `/task-instances?assigneeId=&status=&from=&to=&includeAnyone=` | List instances, filtered |
-| GET | `/task-instances/upcoming?userId=&days=7` | "My week": pending instances due within N days, assigned to me or anyone |
-| POST | `/task-instances/:id/complete` | `{ completedBy }` → status completed |
-| POST | `/task-instances/:id/reassign` | `{ assigneeId }` (null = anyone) |
-| POST | `/task-instances/:id/reopen` | Back to pending |
-| GET | `/health` | Liveness |
+### Frontend build steps
 
-### Frontend behaviour
+| # | Step | Done when |
+|---|------|-----------|
+| 7 | Scaffold `web/` (create-next-app) + `lib/api.ts` + `.env.local` | App renders, health check to API works |
+| 8 | `UserContext` + `/users` picker with localStorage | Identity persists across reloads; first visit forces picker |
+| 9 | Dashboard week view (grouped, overdue styling) | Sees own + anyone tasks for next 7 days |
+| 10 | `/tasks/new` form | Can create one-off + recurring, specific/anyone, offset |
+| 11 | Complete / reopen / reassign on `TaskCard` | Full lifecycle in UI |
+| 12 | `ClockSpoofer` + E2E smoke: seed data → spoof forward a week → verify recurrence & overdue rendering | Both apps verified together; update root README |
 
-- **`/` dashboard**: header with current user + switch button. "Next 7 days" list grouped by due date (Today / Tomorrow / Wed 23 Jul …), showing tasks assigned to me + anyone-tasks. Each card: title, due date, assignee badge, Complete button, reassign dropdown.
-- **`/tasks/new`**: form — title, description, recurrence select, assignee select (specific user or "Anyone"), due offset (number of days). One-off tasks appear immediately.
-- **`/users`**: user picker tiles + add/remove users.
-- Overdue tasks highlighted in red; due-today in amber.
+## 5. Decisions & conventions (as built)
 
----
+- IDs: `crypto.randomUUID()`. Date math: `date-fns` on the server; dates stored
+  as `yyyy-MM-dd` strings (compare lexicographically), timestamps as UTC ISO.
+- Server is ESM (`"type": "module"`), NodeNext resolution, relative imports use
+  `.js` extensions. Tests: Vitest, temp-dir JSON storage per test, spoofed clock
+  reset in `afterEach`.
+- The machine runs **Node v18.13** — eslint 9 warns but runs. ⚠️ Next.js 14
+  needs Node ≥18.17 and Next.js 15 needs ≥18.18: **upgrade Node to 20 LTS
+  before scaffolding the web app** (or expect create-next-app to fail).
 
-## 4. Build plan
+## 6. Future backlog (noticed during backend build — not yet scheduled)
 
-Keep the files small and modular where possible.
-
-| # | Step | Output |
-|---|------|--------|
-| 1 | Scaffold `server/` — package.json, tsconfig, Express boot, `/health` | Server runs, health check 200 |
-| 2 | Storage layer — `StorageProvider` interface + `JsonFileStorage` | CRUD against JSON files with atomic writes |
-| 3 | Types + services + hydration engine with recurrence math | Unit-testable hydration, idempotent |
-| 4 | REST routes for users, definitions, instances | Full API per table above |
-| 5 | Scheduler — 60-min `setInterval` + run-at-boot | Recurring tasks materialise automatically |
-| 6 | Seed data — default household users on first run | Usable out of the box |
-| 7 | Scaffold `web/` — Next.js + Tailwind, API client | App renders, talks to API |
-| 8 | User picker + `UserContext` (localStorage) | Identity persists across reloads |
-| 9 | Dashboard week view (grouped by due date, overdue styling) | See my upcoming week |
-| 10 | Task creation form (one-off + recurring, anyone/specific) | Can create everything |
-| 11 | Complete + reassign actions | Full task lifecycle in UI |
-| 12 | End-to-end smoke test both apps + README with run instructions | Done |
-
-## 5. Decisions & conventions
-
-- **IDs**: `crypto.randomUUID()`.
-- **Dates**: `yyyy-MM-dd` strings for occurrence/due dates; full ISO timestamps for createdAt/completedAt. Date math via `date-fns` (server) to keep month/quarter arithmetic correct.
-- **Writes**: JSON files written atomically (write temp file → rename) to avoid corruption.
-- **Concurrency**: a simple in-process write queue in `JsonFileStorage` serialises mutations — fine for household scale.
-- **DB migration path**: implement `StorageProvider` (methods like `listUsers`, `insertDefinition`, `findInstances`) against your DB of choice; swap one line in `config.ts`/composition root.
-- **Ports**: API `4000`, web `3000`. `NEXT_PUBLIC_API_URL` points the web app at the API.
+- **Auth**: currently trust-based user picker; no sessions/permissions at all.
+- **DB provider**: implement `StorageProvider` for Postgres/SQLite when JSON
+  files outgrow household scale (composition root: `server/src/index.ts`).
+- **User deletion cascade**: reassign or null-out `assigneeId`/`completedBy`
+  when a user is deleted (API currently leaves orphans).
+- **Instance editing**: no PATCH on single occurrences (e.g. rename just this
+  one, move a due date). Definition edits only affect future hydrations.
+- **More recurrences**: fortnightly, yearly, "every N days", specific weekday
+  rules (e.g. "bins every Tuesday").
+- **History/stats view**: completed instances per user, streaks for recurring
+  tasks, "who did what this month".
+- **Notifications**: overdue nudges (email/push/Telegram), daily digest of
+  today's tasks.
+- **PWA**: installable on phones, offline tolerance, quick-complete from home screen.
+- **Root tooling**: root `package.json` with `concurrently` to boot server+web
+  together; shared types package to avoid drift between `server/src/types.ts`
+  and the web app's types.
+- **Rate of hydration**: scheduler is interval-based; could become cron-based
+  (e.g. node-cron at 00:05) once exact semantics matter.
