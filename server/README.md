@@ -28,7 +28,7 @@ First run creates `data/` and seeds three users (override with `SEED_USERS=Name1
 | `PORT` | `4000` | HTTP port |
 | `DATA_DIR` | `./data` | Where JSON files live |
 | `HYDRATION_INTERVAL_MS` | `3600000` | Hydration loop interval (60 min) |
-| `HYDRATION_HORIZON_DAYS` | `1` | How far ahead of today to materialise occurrences |
+| `HYDRATION_HORIZON_DAYS` | `5` | How far ahead of today to materialise occurrences |
 | `SEED_USERS` | `Alex,Jordan,Sam` | Comma-separated names for first-run seeding |
 | `SPOOF_DATE` | — | Boot with the clock spoofed, e.g. `2026-08-01` |
 

@@ -95,10 +95,12 @@ describe('API', () => {
     expect(spoof.status).toBe(200);
     expect(spoof.body.spoofed).toBe(true);
     expect(spoof.body.today).toBe('2026-07-25');
-    expect(spoof.body.hydrated).toBe(5); // 07-22 … 07-26 (07-20/07-21 created at definition time)
+    // Default horizon is 5 days (HYDRATION_HORIZON_DAYS), so the spoof jump
+    // materialises 07-22 … 07-30 (07-20/07-21 were created at definition time).
+    expect(spoof.body.hydrated).toBe(9);
 
     instances = await request(app).get('/api/task-instances');
-    expect(instances.body).toHaveLength(7);
+    expect(instances.body).toHaveLength(11);
 
     const reset = await request(app).delete('/api/debug/clock');
     expect(reset.body.spoofed).toBe(false);
