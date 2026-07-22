@@ -108,6 +108,12 @@ export default function DashboardPage() {
             switch
           </button>
           <Link
+            href="/tasks"
+            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-100"
+          >
+            Manage tasks
+          </Link>
+          <Link
             href="/tasks/new"
             className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700"
           >

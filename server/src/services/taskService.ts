@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { format, isValid, parseISO } from 'date-fns';
 import { nowIso, todayPlus, todayStr } from '../clock.js';
 import type { StorageProvider } from '../storage/StorageProvider.js';
 import {
@@ -18,6 +19,7 @@ export interface CreateDefinitionInput {
   recurrence?: unknown;
   assigneeId?: unknown;
   dueOffsetDays?: unknown;
+  startDate?: unknown;
 }
 
 export interface InstanceFilters {
@@ -26,6 +28,26 @@ export interface InstanceFilters {
   from?: string; // dueDate >= from (yyyy-MM-dd)
   to?: string; // dueDate <= to (yyyy-MM-dd)
   includeAnyone?: boolean; // when assigneeId is set, also include unassigned tasks
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Normalise a startDate input: undefined/null/'' → null (anchor on creation
+ * date); otherwise require a real yyyy-MM-dd calendar date. The format()
+ * round-trip catches impossible dates like 2026-02-30 even if the parser
+ * rolls them over instead of rejecting them.
+ */
+function validateStartDate(value: unknown): string | null {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string' || !DATE_RE.test(value)) {
+    throw badRequest('startDate must be a yyyy-MM-dd date string or null');
+  }
+  const parsed = parseISO(value);
+  if (!isValid(parsed) || format(parsed, 'yyyy-MM-dd') !== value) {
+    throw badRequest('startDate must be a valid calendar date (yyyy-MM-dd)');
+  }
+  return value;
 }
 
 function validateAssignee(storage: StorageProvider, assigneeId: unknown): Promise<string | null> {
@@ -67,6 +89,7 @@ export function createTaskService(storage: StorageProvider) {
       }
 
       const assigneeId = await validateAssignee(storage, input.assigneeId);
+      const startDate = validateStartDate(input.startDate);
 
       const def: TaskDefinition = {
         id: randomUUID(),
@@ -75,6 +98,7 @@ export function createTaskService(storage: StorageProvider) {
         recurrence,
         assigneeId,
         dueOffsetDays,
+        startDate,
         active: true,
         lastHydratedDate: null,
         createdAt: nowIso(),
@@ -82,11 +106,15 @@ export function createTaskService(storage: StorageProvider) {
       await storage.insertDefinition(def);
 
       if (recurrence === 'none') {
-        // One-off: materialise its single instance immediately.
-        await storage.insertInstance(instanceFromDefinition(def, todayStr()));
-        await storage.updateDefinition(def.id, { lastHydratedDate: todayStr() });
+        // One-off: materialise its single instance immediately, on the
+        // requested start date (default: today).
+        const occurrenceDate = startDate ?? todayStr();
+        await storage.insertInstance(instanceFromDefinition(def, occurrenceDate));
+        await storage.updateDefinition(def.id, { lastHydratedDate: occurrenceDate });
       } else {
         // Recurring: hydrate right away so the first occurrence shows up now.
+        // A future startDate naturally hydrates nothing until the horizon
+        // catches up (see hydrateDefinition).
         await hydrateDefinition(storage, def, todayPlus(1));
       }
       return (await storage.getDefinition(def.id)) ?? def;
@@ -119,6 +147,12 @@ export function createTaskService(storage: StorageProvider) {
         const n = Number(patch.dueOffsetDays);
         if (!Number.isInteger(n) || n < 0 || n > 365) throw badRequest('dueOffsetDays must be an integer between 0 and 365');
         updates.dueOffsetDays = n;
+      }
+      // Caveat: once hydration has begun, the lastHydratedDate watermark
+      // drives the series — changing startDate does not move already-hydrated
+      // instances (same snapshot semantics as other edits).
+      if (patch.startDate !== undefined) {
+        updates.startDate = validateStartDate(patch.startDate);
       }
       if (patch.active !== undefined) {
         if (typeof patch.active !== 'boolean') throw badRequest('active must be a boolean');

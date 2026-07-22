@@ -49,11 +49,14 @@ export async function hydrateDefinition(
 
   const recurrence = def.recurrence;
   // yyyy-MM-dd strings compare correctly lexicographically.
+  // The series anchors on startDate when set, otherwise on the creation date.
+  // (`??` also covers legacy JSON records where the field is absent entirely.)
+  // A future startDate simply hydrates nothing until the horizon catches up.
   // NB: createdAt is a UTC ISO timestamp — derive the occurrence start as the
   // *local* date so it lines up with todayStr() everywhere else.
   let cursor = def.lastHydratedDate
     ? stepDate(def.lastHydratedDate, recurrence)
-    : format(parseISO(def.createdAt), 'yyyy-MM-dd');
+    : (def.startDate ?? format(parseISO(def.createdAt), 'yyyy-MM-dd'));
 
   let created = 0;
   while (cursor <= horizonEnd) {

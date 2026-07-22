@@ -1,9 +1,9 @@
 # Household Task Manager — Plan
 
 > **Status: backend ✅ complete & tested · frontend ✅ built & verified live**
-> Next up: steps 13–14 (§7) — a definitions manager (view/edit recurring
-> templates) and a start date for tasks. Everything the frontend needed is
-> documented in §3 (as-built API contract) and §4 (frontend spec).
+> Steps 7–14 done (latest: start dates on definitions, §7.2). What's next is
+> picked from the backlog in §6; the API contract the frontend relies on is
+> documented in §3.
 
 ## 1. Overview
 
@@ -11,7 +11,7 @@ A household task manager with two deployable parts:
 
 | Part | Tech | Status |
 |------|------|--------|
-| `server/` | Node.js + Express + TypeScript | ✅ Built, 31/31 tests passing, lint clean, smoke-tested live |
+| `server/` | Node.js + Express + TypeScript | ✅ Built, 39/39 tests passing, lint clean, smoke-tested live |
 | `web/` | Next.js 16 (App Router) + TypeScript + Tailwind v4 | ✅ Built, lint clean, verified live with the API |
 
 No authentication. The web app asks "who are you?" once and remembers the choice
@@ -66,6 +66,7 @@ interface TaskDefinition {
   recurrence: Recurrence;
   assigneeId: string | null;      // null = "anyone"
   dueOffsetDays: number;          // due N days after each occurrence
+  startDate: string | null;       // yyyy-MM-dd first occurrence; null = anchor on creation date
   active: boolean;
   lastHydratedDate: string | null;
   createdAt: string;
@@ -92,7 +93,7 @@ interface TaskInstance {
 | POST | `/users` | `{ name, color? }` | Colour auto-assigned from a palette if omitted |
 | DELETE | `/users/:id` | — | 204 |
 | GET | `/task-definitions` | — | List templates |
-| POST | `/task-definitions` | `{ title, description?, recurrence?, assigneeId?, dueOffsetDays? }` | Defaults: `recurrence=none`, `assigneeId=null` (anyone), `dueOffsetDays=0`. One-offs hydrate instantly; recurring hydrates first occurrence(s) immediately |
+| POST | `/task-definitions` | `{ title, description?, recurrence?, assigneeId?, dueOffsetDays?, startDate? }` | Defaults: `recurrence=none`, `assigneeId=null` (anyone), `dueOffsetDays=0`, `startDate=null` (creation date). One-offs hydrate instantly (on `startDate ?? today`); recurring hydrates first occurrence(s) immediately unless `startDate` is in the future |
 | PATCH | `/task-definitions/:id` | partial fields + `active?` | Edit / deactivate |
 | DELETE | `/task-definitions/:id` | — | Deletes template + its **pending** instances; completed stay as history |
 | GET | `/task-instances` | `status=`, `assigneeId=` (`null` string = anyone), `from=`, `to=` (dueDate range), `includeAnyone=true` | Sorted by dueDate then title |
@@ -104,6 +105,11 @@ interface TaskInstance {
 
 Gotchas for the UI:
 - `upcoming` includes **overdue** pending tasks (dueDate < today) — style them.
+- `startDate` anchors a recurring series' first occurrence (for one-offs it's
+  the single instance's date). Once hydration has begun, the `lastHydratedDate`
+  watermark drives the series — PATCHing `startDate` does not move
+  already-hydrated instances (same snapshot semantics as other edits).
+  Pre-startDate JSON records simply lack the field and anchor on `createdAt`.
 - Completing an "anyone" task records `completedBy` — show who did it.
 - Editing a definition does **not** rewrite already-hydrated instances
   (title/description/assignee are snapshots). Intended behaviour.
@@ -150,8 +156,8 @@ directly — no SSR/data-fetching-on-server needed (keeps date spoofing simple).
 | 10 ✅ | `/tasks/new` form | Can create one-off + recurring, specific/anyone, offset |
 | 11 ✅ | Complete / reopen / reassign on `TaskCard` | Full lifecycle in UI |
 | 12 ✅ | `ClockSpoofer` + E2E smoke: seed data → spoof forward a week → verify recurrence & overdue rendering | Both apps verified together; root README written |
-| 13 ⬜ | Definitions manager: view/edit/deactivate/delete templates | See §7.1 |
-| 14 ⬜ | Start date on definitions (backend + form field) | See §7.2 |
+| 13 ✅ | Definitions manager: view/edit/deactivate/delete templates | See §7.1 |
+| 14 ✅ | Start date on definitions (backend + form field) | See §7.2 |
 
 ## 5. Decisions & conventions (as built)
 

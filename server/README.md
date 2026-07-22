@@ -17,7 +17,7 @@ First run creates `data/` and seeds three users (override with `SEED_USERS=Name1
 |---------|---------|
 | `npm run dev` | Dev server with watch mode |
 | `npm run build` / `npm start` | Compile to `dist/` and run |
-| `npm test` | Vitest suite (31 tests: storage, hydration, services, API) |
+| `npm test` | Vitest suite (39 tests: storage, hydration, services, API) |
 | `npm run lint` | ESLint (flat config, typescript-eslint) |
 | `npm run typecheck` | `tsc --noEmit` |
 
@@ -41,7 +41,7 @@ Base: `http://localhost:4000/api`
 | GET | `/health` | Liveness |
 | GET / POST | `/users` | List / create `{ name, color? }` |
 | DELETE | `/users/:id` | Remove user |
-| GET / POST | `/task-definitions` | List / create `{ title, description?, recurrence, assigneeId?, dueOffsetDays? }` |
+| GET / POST | `/task-definitions` | List / create `{ title, description?, recurrence, assigneeId?, dueOffsetDays?, startDate? }` |
 | PATCH / DELETE | `/task-definitions/:id` | Edit/deactivate / delete (pending instances go too, completed stay) |
 | GET | `/task-instances?status=&assigneeId=&from=&to=&includeAnyone=` | List instances (`assigneeId=null` for anyone-tasks) |
 | GET | `/task-instances/upcoming?userId=&days=7` | "My week": pending, mine + anyone, overdue included |
@@ -69,3 +69,4 @@ Setting the date **re-runs hydration immediately**, so recurring tasks materiali
 - **TaskDefinition** = recurring template; **TaskInstance** = concrete occurrence. Hydration (`src/services/hydrationService.ts`) materialises instances from each definition's watermark up to today + horizon, idempotently (uniqueness on `(definitionId, occurrenceDate)`).
 - **`src/scheduler.ts`** runs hydration at boot and then on the configured interval.
 - One-off tasks (`recurrence: "none"`) create their single instance at creation time.
+- Definitions can carry a `startDate` (yyyy-MM-dd): a recurring series anchors its first occurrence on it instead of the creation date (a future date hydrates nothing until the horizon catches up), and a one-off's single instance is created for that date. Once hydration has begun, the `lastHydratedDate` watermark drives the series — editing `startDate` doesn't move already-hydrated instances. Older JSON records without the field anchor on `createdAt` as before.

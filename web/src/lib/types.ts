@@ -23,6 +23,8 @@ export interface TaskDefinition {
   assigneeId: string | null;
   /** due N days after each occurrence date */
   dueOffsetDays: number;
+  /** yyyy-MM-dd of the first occurrence; null = anchored on the creation date */
+  startDate: string | null;
   active: boolean;
   lastHydratedDate: string | null;
   createdAt: string; // ISO timestamp

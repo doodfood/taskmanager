@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { setSpoofedDate } from '../src/clock.js';
 import { hydrateAll, stepDate } from '../src/services/hydrationService.js';
 import { createTaskService } from '../src/services/taskService.js';
+import type { TaskDefinition } from '../src/types.js';
 import type { TestContext } from './helpers.js';
 import { makeTestContext } from './helpers.js';
 
@@ -98,6 +100,80 @@ describe('hydration', () => {
 
     expect(result.created).toBe(0);
     expect(await ctx.storage.listInstances()).toHaveLength(before);
+  });
+
+  it('anchors a weekly series on startDate instead of the creation date', async () => {
+    ctx = await makeTestContext('2026-07-20');
+    const tasks = createTaskService(ctx.storage);
+    const def = await tasks.createDefinition({ title: 'Bins', recurrence: 'weekly', startDate: '2026-08-03' });
+    expect(def.startDate).toBe('2026-08-03');
+
+    // Future startDate → creation-time hydration materialises nothing
+    // (horizon today+1 = 2026-07-21 is before the first occurrence).
+    expect(await ctx.storage.listInstances()).toHaveLength(0);
+    expect(def.lastHydratedDate).toBeNull();
+
+    setSpoofedDate('2026-08-05T09:00:00');
+    const result = await hydrateAll(ctx.storage, 1);
+    expect(result.created).toBe(1); // 08-03 only; next occurrence 08-10 is beyond the horizon
+
+    const dates = (await ctx.storage.listInstances()).map((i) => i.occurrenceDate);
+    expect(dates).toEqual(['2026-08-03']);
+  });
+
+  it('hydrates a quarterly task starting next month only once the horizon reaches it', async () => {
+    ctx = await makeTestContext('2026-07-20');
+    const tasks = createTaskService(ctx.storage);
+    await tasks.createDefinition({ title: 'Insurance renewal', recurrence: 'quarterly', startDate: '2026-08-15' });
+    expect(await ctx.storage.listInstances()).toHaveLength(0);
+
+    setSpoofedDate('2026-08-16T09:00:00');
+    await hydrateAll(ctx.storage, 1);
+
+    const dates = (await ctx.storage.listInstances()).map((i) => i.occurrenceDate);
+    expect(dates).toEqual(['2026-08-15']); // next: 2026-11-15, far beyond the horizon
+  });
+
+  it('hydrates nothing before startDate as the spoofed clock advances, then starts on the day', async () => {
+    ctx = await makeTestContext('2026-07-20');
+    const tasks = createTaskService(ctx.storage);
+    await tasks.createDefinition({ title: 'Garden', recurrence: 'weekly', startDate: '2026-08-01' });
+
+    // Advance to just before the start date: horizon 07-31 < 08-01 → nothing.
+    setSpoofedDate('2026-07-30T09:00:00');
+    const before = await hydrateAll(ctx.storage, 1);
+    expect(before.created).toBe(0);
+    expect(await ctx.storage.listInstances()).toHaveLength(0);
+
+    // Cross the start date: the first occurrence materialises exactly on it.
+    setSpoofedDate('2026-08-01T09:00:00');
+    const after = await hydrateAll(ctx.storage, 1);
+    expect(after.created).toBe(1);
+    const dates = (await ctx.storage.listInstances()).map((i) => i.occurrenceDate);
+    expect(dates).toEqual(['2026-08-01']);
+  });
+
+  it('back-compat: a definition without a startDate anchors on its creation date', async () => {
+    ctx = await makeTestContext('2026-07-20');
+    // Simulate a pre-startDate JSON record — the field is absent entirely.
+    const legacy = {
+      id: randomUUID(),
+      title: 'Legacy weekly',
+      description: '',
+      recurrence: 'weekly',
+      assigneeId: null,
+      dueOffsetDays: 0,
+      active: true,
+      lastHydratedDate: null,
+      createdAt: '2026-07-06T09:00:00.000Z',
+    } as TaskDefinition;
+    await ctx.storage.insertDefinition(legacy);
+
+    const result = await hydrateAll(ctx.storage, 1);
+    expect(result.created).toBe(3); // anchored on 2026-07-06 (local date of createdAt)
+
+    const dates = (await ctx.storage.listInstances()).map((i) => i.occurrenceDate).sort();
+    expect(dates).toEqual(['2026-07-06', '2026-07-13', '2026-07-20']);
   });
 
   it('backfills occurrences for a definition created in the past', async () => {

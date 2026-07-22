@@ -21,6 +21,11 @@ export interface TaskDefinition {
   assigneeId: string | null;
   /** due N days after each occurrence date */
   dueOffsetDays: number;
+  /**
+   * yyyy-MM-dd of the first occurrence. null (or absent in pre-existing JSON
+   * records) = anchor the series on the creation date.
+   */
+  startDate: string | null;
   active: boolean;
   /** yyyy-MM-dd watermark of the last occurrence the hydration loop materialised */
   lastHydratedDate: string | null;

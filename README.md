@@ -26,7 +26,7 @@ Open http://localhost:3000 — the first visit asks who you are (seeded users: A
 |---------|---------|
 | `npm run dev` | Boot server + web together |
 | `npm run dev:server` / `npm run dev:web` | Boot just one side |
-| `npm test` | Server test suite (Vitest, 31 tests) |
+| `npm test` | Server test suite (Vitest, 39 tests) |
 | `npm run lint` | Lint both packages |
 | `npm run build` | Build both packages |
 
@@ -41,6 +41,6 @@ Try it: create a daily task, jump a week forward — the missed occurrences mate
 
 ## Status
 
-- Backend ✅ complete, 31/31 tests passing, lint clean
-- Frontend ✅ dashboard week view, new-task form, user picker, complete/reopen/reassign, clock spoofer
-- Next up: definitions manager (edit recurring templates) and start dates for tasks — see `PLAN.md` §7
+- Backend ✅ complete, 39/39 tests passing, lint clean
+- Frontend ✅ dashboard week view, new-task form (with first-occurrence date), user picker, complete/reopen/reassign, clock spoofer, definitions manager
+- Next up: pick from the backlog in `PLAN.md` §6

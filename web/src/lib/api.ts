@@ -59,10 +59,22 @@ export interface CreateDefinitionInput {
   /** null / undefined = "anyone" */
   assigneeId?: string | null;
   dueOffsetDays?: number;
+  /** yyyy-MM-dd of the first occurrence; null / undefined = anchor on the creation date */
+  startDate?: string | null;
 }
+
+export const listDefinitions = () => request<TaskDefinition[]>('/task-definitions');
 
 export const createDefinition = (input: CreateDefinitionInput) =>
   request<TaskDefinition>('/task-definitions', { method: 'POST', body: JSON.stringify(input) });
+
+export type UpdateDefinitionInput = Partial<CreateDefinitionInput> & { active?: boolean };
+
+export const updateDefinition = (id: string, input: UpdateDefinitionInput) =>
+  request<TaskDefinition>(`/task-definitions/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
+
+/** Deletes the template and its PENDING instances; completed instances stay as history. */
+export const deleteDefinition = (id: string) => request<void>(`/task-definitions/${id}`, { method: 'DELETE' });
 
 // ---- task instances ---------------------------------------------------------
 

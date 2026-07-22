@@ -33,6 +33,68 @@ describe('taskService — definitions', () => {
     expect(instances[0].assigneeId).toBe(ctx.users[0].id);
   });
 
+  it('creates a one-off on a future startDate instead of today', async () => {
+    ctx = await makeTestContext('2026-07-20');
+    const tasks = createTaskService(ctx.storage);
+
+    const def = await tasks.createDefinition({
+      title: 'Future fix',
+      recurrence: 'none',
+      startDate: '2026-08-01',
+      dueOffsetDays: 2,
+    });
+    expect(def.startDate).toBe('2026-08-01');
+    expect(def.lastHydratedDate).toBe('2026-08-01');
+
+    const instances = await ctx.storage.listInstances();
+    expect(instances).toHaveLength(1);
+    expect(instances[0].occurrenceDate).toBe('2026-08-01');
+    expect(instances[0].dueDate).toBe('2026-08-03');
+  });
+
+  it('defaults startDate to null (anchor on creation date) when omitted', async () => {
+    ctx = await makeTestContext('2026-07-20');
+    const tasks = createTaskService(ctx.storage);
+
+    const def = await tasks.createDefinition({ title: 'Plain', recurrence: 'none' });
+    expect(def.startDate).toBeNull();
+    const [instance] = await ctx.storage.listInstances();
+    expect(instance.occurrenceDate).toBe('2026-07-20');
+  });
+
+  it('rejects an invalid startDate', async () => {
+    ctx = await makeTestContext();
+    const tasks = createTaskService(ctx.storage);
+
+    await expect(tasks.createDefinition({ title: 'x', startDate: 'tomorrow' })).rejects.toThrow(HttpError);
+    await expect(tasks.createDefinition({ title: 'x', startDate: '2026-02-30' })).rejects.toThrow(HttpError);
+    await expect(tasks.createDefinition({ title: 'x', startDate: '2026-7-1' })).rejects.toThrow(HttpError);
+    await expect(tasks.createDefinition({ title: 'x', startDate: 12345 })).rejects.toThrow(HttpError);
+  });
+
+  it('PATCH accepts startDate, but the hydration watermark keeps driving the series', async () => {
+    ctx = await makeTestContext('2026-07-20');
+    const tasks = createTaskService(ctx.storage);
+    const def = await tasks.createDefinition({ title: 'Daily', recurrence: 'daily' });
+    expect((await ctx.storage.listInstances()).map((i) => i.occurrenceDate).sort()).toEqual([
+      '2026-07-20',
+      '2026-07-21',
+    ]);
+
+    // Moving startDate after hydration has begun must not move the series —
+    // lastHydratedDate (2026-07-21) wins, so the next occurrence is 07-22.
+    const updated = await tasks.updateDefinition(def.id, { startDate: '2026-08-01' });
+    expect(updated.startDate).toBe('2026-08-01');
+
+    setSpoofedDate('2026-07-22T09:00:00');
+    await hydrateAll(ctx.storage, 1);
+    const dates = (await ctx.storage.listInstances()).map((i) => i.occurrenceDate).sort();
+    expect(dates).toEqual(['2026-07-20', '2026-07-21', '2026-07-22', '2026-07-23']);
+
+    // …and the same validation rules apply on PATCH.
+    await expect(tasks.updateDefinition(def.id, { startDate: 'not-a-date' })).rejects.toThrow(HttpError);
+  });
+
   it('rejects invalid input', async () => {
     ctx = await makeTestContext();
     const tasks = createTaskService(ctx.storage);
