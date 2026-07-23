@@ -56,6 +56,12 @@ export function TaskCard({ instance, overdue, onChanged }: TaskCardProps) {
           )}
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
             <AssigneeBadge assigneeId={instance.assigneeId} />
+            {/* "for" = the occurrence day — when the task becomes actionable.
+                Only shown when it differs from the due date (dueOffsetDays > 0);
+                otherwise the due date already carries the same information. */}
+            {instance.occurrenceDate !== instance.dueDate && (
+              <span>for {formatDateShort(instance.occurrenceDate)}</span>
+            )}
             <span>due {formatDateShort(instance.dueDate)}</span>
             {overdue && !completed && <span className="font-semibold text-red-600">overdue</span>}
             {completed && instance.completedAt && (

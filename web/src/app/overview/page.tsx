@@ -17,7 +17,10 @@ interface UserGroup {
   name: string;
   /** null → grey dot (Anyone / Unknown). */
   color: string | null;
-  items: TaskInstance[];
+  /** occurrenceDate ≤ today — the occurrence day has arrived, so act now. */
+  now: TaskInstance[];
+  /** occurrenceDate > today — future occurrences hydration already materialised. */
+  upcoming: TaskInstance[];
   overdueCount: number;
 }
 
@@ -67,15 +70,25 @@ export default function OverviewPage() {
       else byAssignee.set(key, [t]);
     }
 
-    const byDueThenTitle = (a: TaskInstance, b: TaskInstance) =>
-      a.dueDate === b.dueDate ? a.title.localeCompare(b.title) : a.dueDate < b.dueDate ? -1 : 1;
-    const make = (key: string, name: string, color: string | null, items: TaskInstance[]): UserGroup => ({
-      key,
-      name,
-      color,
-      items: [...items].sort(byDueThenTitle),
-      overdueCount: items.filter((t) => t.dueDate < ref).length,
-    });
+    // Ordered by occurrence date: the day an occurrence is *for* determines
+    // both its position in the list and whether it's actionable yet.
+    const byOccurrenceThenTitle = (a: TaskInstance, b: TaskInstance) =>
+      a.occurrenceDate === b.occurrenceDate
+        ? a.title.localeCompare(b.title)
+        : a.occurrenceDate < b.occurrenceDate
+          ? -1
+          : 1;
+    const make = (key: string, name: string, color: string | null, items: TaskInstance[]): UserGroup => {
+      const sorted = [...items].sort(byOccurrenceThenTitle);
+      return {
+        key,
+        name,
+        color,
+        now: sorted.filter((t) => t.occurrenceDate <= ref),
+        upcoming: sorted.filter((t) => t.occurrenceDate > ref),
+        overdueCount: items.filter((t) => t.dueDate < ref).length,
+      };
+    };
 
     const result: UserGroup[] = [];
     // The communal pool first — unassigned tasks still need an owner. Always
@@ -127,8 +140,9 @@ export default function OverviewPage() {
       </header>
       <p className="mt-1 text-sm text-neutral-500">
         Everyone&rsquo;s pending tasks — anything overdue plus everything materialised so far — grouped by person,
-        with unassigned tasks under Anyone. Completed tasks are hidden; completing here records{' '}
-        <strong>{me.name}</strong> as the doer.
+        ordered by occurrence date and split into <strong>do it now</strong> (the occurrence day has arrived) and{' '}
+        <strong>upcoming</strong> (future occurrences), with unassigned tasks under Anyone. Completed tasks are
+        hidden; completing here records <strong>{me.name}</strong> as the doer.
       </p>
 
       {clock?.spoofed && (
@@ -163,22 +177,16 @@ export default function OverviewPage() {
                   style={{ backgroundColor: g.color ?? '#a3a3a3' }}
                 />
                 {g.name}
-                <span className="font-normal text-neutral-400">{g.items.length}</span>
+                <span className="font-normal text-neutral-400">{g.now.length + g.upcoming.length}</span>
                 {g.overdueCount > 0 && <span className="font-semibold text-red-600">{g.overdueCount} overdue</span>}
               </h2>
-              {g.items.length === 0 ? (
+              {g.now.length + g.upcoming.length === 0 ? (
                 <p className="mt-2 text-sm text-neutral-400">Nothing due 🎉</p>
               ) : (
-                <ul className="mt-2 space-y-2">
-                  {g.items.map((t) => (
-                    <TaskCard
-                      key={t.id}
-                      instance={t}
-                      overdue={clock !== null && t.dueDate < clock.today}
-                      onChanged={() => void load()}
-                    />
-                  ))}
-                </ul>
+                <>
+                  <GroupList label="Do it now" items={g.now} clock={clock} onChanged={() => void load()} />
+                  <GroupList label="Upcoming" items={g.upcoming} clock={clock} onChanged={() => void load()} />
+                </>
               )}
             </section>
           ))
@@ -187,5 +195,33 @@ export default function OverviewPage() {
 
       <ClockSpoofer clock={clock} onChanged={() => void load()} />
     </main>
+  );
+}
+
+/** One labelled sub-list ("Do it now" / "Upcoming") within a person's group. Hidden when empty. */
+function GroupList({
+  label,
+  items,
+  clock,
+  onChanged,
+}: {
+  label: string;
+  items: TaskInstance[];
+  clock: ClockState | null;
+  onChanged: () => void;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div className="mt-3">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+        {label}
+        <span className="ml-1.5 font-normal normal-case text-neutral-400">{items.length}</span>
+      </h3>
+      <ul className="mt-2 space-y-2">
+        {items.map((t) => (
+          <TaskCard key={t.id} instance={t} overdue={clock !== null && t.dueDate < clock.today} onChanged={onChanged} />
+        ))}
+      </ul>
+    </div>
   );
 }
