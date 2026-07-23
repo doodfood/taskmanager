@@ -5,20 +5,21 @@ import { useUser } from '@/context/UserContext';
 import { toDateStr } from '@/lib/dates';
 import { RECURRENCES, recurrenceLabel, type Recurrence, type TaskDefinition } from '@/lib/types';
 
-const ANYONE = '__anyone__';
-
 const RECURRENCE_OPTIONS: { value: Recurrence; label: string }[] = RECURRENCES.map((value) => ({
   value,
   label: value === 'none' ? 'One-off (does not repeat)' : recurrenceLabel(value),
 }));
 
-/** Field values the form produces. `assigneeId: null` means "anyone". */
+/** Field values the form produces. */
 export interface TaskFormValues {
   title: string;
   /** Trimmed; may be an empty string (callers decide undefined-vs-empty semantics). */
   description: string;
   recurrence: Recurrence;
-  assigneeId: string | null;
+  /** Difficulty estimate (0–100). */
+  points: number;
+  /** Users new occurrences may be auto-assigned to (least busy wins); empty = no auto-assignment. */
+  autoAssignableTo: string[];
   dueOffsetDays: number;
   /** yyyy-MM-dd of the first occurrence (the form always produces a concrete date). */
   startDate: string;
@@ -43,11 +44,18 @@ export function TaskForm({ initial, submitLabel, busyLabel, onSubmit, onCancel, 
   const [title, setTitle] = useState(initial?.title ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [recurrence, setRecurrence] = useState<Recurrence>(initial?.recurrence ?? 'none');
-  const [assigneeId, setAssigneeId] = useState<string>(initial?.assigneeId ?? ANYONE);
+  const [points, setPoints] = useState(initial?.points ?? 1);
+  const [autoAssignableTo, setAutoAssignableTo] = useState<string[]>(initial?.autoAssignableTo ?? []);
   const [dueOffsetDays, setDueOffsetDays] = useState(initial?.dueOffsetDays ?? 0);
   const [startDate, setStartDate] = useState(initial?.startDate ?? toDateStr(new Date()));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function toggleAutoAssignable(userId: string) {
+    setAutoAssignableTo((current) =>
+      current.includes(userId) ? current.filter((id) => id !== userId) : [...current, userId],
+    );
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -59,7 +67,8 @@ export function TaskForm({ initial, submitLabel, busyLabel, onSubmit, onCancel, 
         title: title.trim(),
         description: description.trim(),
         recurrence,
-        assigneeId: assigneeId === ANYONE ? null : assigneeId,
+        points,
+        autoAssignableTo,
         dueOffsetDays,
         startDate,
       });
@@ -138,22 +147,18 @@ export function TaskForm({ initial, submitLabel, busyLabel, onSubmit, onCancel, 
         </div>
 
         <div>
-          <label htmlFor={`${uid}-assignee`} className="mb-1 block text-sm font-medium">
-            Assigned to
+          <label htmlFor={`${uid}-points`} className="mb-1 block text-sm font-medium">
+            Points
           </label>
-          <select
-            id={`${uid}-assignee`}
-            value={assigneeId}
-            onChange={(e) => setAssigneeId(e.target.value)}
+          <input
+            id={`${uid}-points`}
+            type="number"
+            min={0}
+            max={100}
+            value={points}
+            onChange={(e) => setPoints(Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
             className={inputCls}
-          >
-            <option value={ANYONE}>Anyone</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </select>
+          />
         </div>
 
         <div>
@@ -171,6 +176,39 @@ export function TaskForm({ initial, submitLabel, busyLabel, onSubmit, onCancel, 
           />
         </div>
       </div>
+
+      <fieldset>
+        <legend className="mb-1 text-sm font-medium">
+          Auto-assign to <span className="font-normal text-neutral-400">(optional)</span>
+        </legend>
+        <p className="mb-2 text-xs text-neutral-500">
+          Tick the people this task can be given to automatically. Each new occurrence goes to whoever has the fewest
+          outstanding points; with nobody ticked, occurrences are created for Anyone.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {users.map((u) => {
+            const checked = autoAssignableTo.includes(u.id);
+            return (
+              <label
+                key={u.id}
+                className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-sm ${
+                  checked
+                    ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                    : 'border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-50'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggleAutoAssignable(u.id)}
+                  className="accent-indigo-600"
+                />
+                {u.name}
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
 
       {hint}
 

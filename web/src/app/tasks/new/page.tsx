@@ -16,6 +16,8 @@ export default function NewTaskPage() {
       description: values.description || undefined,
       recurrence: values.recurrence,
       assigneeId: values.assigneeId,
+      points: values.points,
+      autoAssignableTo: values.autoAssignableTo,
       dueOffsetDays: values.dueOffsetDays,
       startDate: values.startDate,
     });

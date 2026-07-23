@@ -56,8 +56,10 @@ export interface CreateDefinitionInput {
   title: string;
   description?: string;
   recurrence?: Recurrence;
-  /** null / undefined = "anyone" */
-  assigneeId?: string | null;
+  /** Difficulty estimate (0–100); defaults to 1 server-side. */
+  points?: number;
+  /** Users new occurrences may be auto-assigned to (least busy wins); empty = no auto-assignment. */
+  autoAssignableTo?: string[];
   dueOffsetDays?: number;
   /** yyyy-MM-dd of the first occurrence; null / undefined = anchor on the creation date */
   startDate?: string | null;

@@ -17,7 +17,8 @@ export interface CreateDefinitionInput {
   title?: unknown;
   description?: unknown;
   recurrence?: unknown;
-  assigneeId?: unknown;
+  points?: unknown;
+  autoAssignableTo?: unknown;
   dueOffsetDays?: unknown;
   startDate?: unknown;
 }
@@ -59,6 +60,35 @@ function validateAssignee(storage: StorageProvider, assigneeId: unknown): Promis
   });
 }
 
+/** Difficulty estimate: undefined/null/'' → default 1, otherwise an integer 0–100. */
+function validatePoints(value: unknown): number {
+  if (value === undefined || value === null || value === '') return 1;
+  let points = value;
+  if (typeof points === 'string' && points.trim() !== '') points = Number(points);
+  if (typeof points !== 'number' || !Number.isInteger(points) || points < 0 || points > 100) {
+    throw badRequest('points must be an integer between 0 and 100');
+  }
+  return points;
+}
+
+/** Auto-assignment candidates: undefined/null → default [], otherwise a deduped list of existing user ids. */
+async function validateAutoAssignableTo(storage: StorageProvider, value: unknown): Promise<string[]> {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) throw badRequest('autoAssignableTo must be an array of user ids');
+  const ids: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'string' || entry === '') {
+      throw badRequest('autoAssignableTo must be an array of user ids');
+    }
+    if (ids.includes(entry)) continue; // dedupe, preserving order
+    if (!(await storage.getUser(entry))) {
+      throw badRequest(`autoAssignableTo entry ${entry} does not match an existing user`);
+    }
+    ids.push(entry);
+  }
+  return ids;
+}
+
 export function createTaskService(storage: StorageProvider) {
   async function requireInstance(id: string): Promise<TaskInstance> {
     const instance = await storage.getInstance(id);
@@ -88,7 +118,8 @@ export function createTaskService(storage: StorageProvider) {
         throw badRequest('dueOffsetDays must be an integer between 0 and 365');
       }
 
-      const assigneeId = await validateAssignee(storage, input.assigneeId);
+      const points = validatePoints(input.points);
+      const autoAssignableTo = await validateAutoAssignableTo(storage, input.autoAssignableTo);
       const startDate = validateStartDate(input.startDate);
 
       const def: TaskDefinition = {
@@ -96,7 +127,8 @@ export function createTaskService(storage: StorageProvider) {
         title,
         description: typeof input.description === 'string' ? input.description.trim() : '',
         recurrence,
-        assigneeId,
+        points,
+        autoAssignableTo,
         dueOffsetDays,
         startDate,
         active: true,
@@ -109,7 +141,7 @@ export function createTaskService(storage: StorageProvider) {
         // One-off: materialise its single instance immediately, on the
         // requested start date (default: today).
         const occurrenceDate = startDate ?? todayStr();
-        await storage.insertInstance(instanceFromDefinition(def, occurrenceDate));
+        await storage.insertInstance(await instanceFromDefinition(storage, def, occurrenceDate));
         await storage.updateDefinition(def.id, { lastHydratedDate: occurrenceDate });
       } else {
         // Recurring: hydrate right away so the first occurrence shows up now.
@@ -140,8 +172,11 @@ export function createTaskService(storage: StorageProvider) {
         }
         updates.recurrence = patch.recurrence as Recurrence;
       }
-      if (patch.assigneeId !== undefined) {
-        updates.assigneeId = await validateAssignee(storage, patch.assigneeId);
+      if (patch.points !== undefined) {
+        updates.points = validatePoints(patch.points);
+      }
+      if (patch.autoAssignableTo !== undefined) {
+        updates.autoAssignableTo = await validateAutoAssignableTo(storage, patch.autoAssignableTo);
       }
       if (patch.dueOffsetDays !== undefined) {
         const n = Number(patch.dueOffsetDays);

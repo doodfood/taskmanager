@@ -51,6 +51,8 @@ export default function ManageTasksPage() {
       description: values.description,
       recurrence: values.recurrence,
       assigneeId: values.assigneeId,
+      points: values.points,
+      autoAssignableTo: values.autoAssignableTo,
       dueOffsetDays: values.dueOffsetDays,
       startDate: values.startDate,
     });
@@ -137,13 +139,14 @@ export default function ManageTasksPage() {
         </p>
       ) : (
         <div className="mt-4 overflow-x-auto rounded-lg border border-neutral-200 bg-white shadow-sm">
-          <table className="w-full min-w-[760px] border-collapse text-sm">
+          <table className="w-full min-w-[840px] border-collapse text-sm">
             <thead className="border-b border-neutral-200 bg-neutral-50">
               <tr>
                 <th className={thCls}>Task</th>
                 <th className={thCls}>Repeats</th>
                 <th className={thCls}>Starts</th>
                 <th className={thCls}>Assigned to</th>
+                <th className={thCls}>Points</th>
                 <th className={thCls}>Due</th>
                 <th className={thCls}>State</th>
                 <th className={thCls}>Last hydrated</th>
@@ -184,7 +187,9 @@ interface RowProps {
 }
 
 function DefinitionRow({ def, editing, busy, onEdit, onCancelEdit, onSave, onToggleActive, onDelete }: RowProps) {
+  const { userById } = useUser();
   const actionCls = 'text-sm underline underline-offset-2 disabled:opacity-50 disabled:no-underline';
+  const autoAssignableNames = (def.autoAssignableTo ?? []).map((id) => userById(id)?.name ?? 'Unknown');
   return (
     <>
       <tr className={`border-b border-neutral-100 align-top ${def.active ? '' : 'bg-neutral-50 text-neutral-400'}`}>
@@ -196,7 +201,11 @@ function DefinitionRow({ def, editing, busy, onEdit, onCancelEdit, onSave, onTog
         <td className="px-3 py-2.5 whitespace-nowrap">{def.startDate ? formatDateShort(def.startDate) : '—'}</td>
         <td className="px-3 py-2.5">
           <AssigneeBadge assigneeId={def.assigneeId} />
+          {autoAssignableNames.length > 0 && (
+            <div className="mt-1 text-xs whitespace-nowrap text-indigo-600">Auto: {autoAssignableNames.join(', ')}</div>
+          )}
         </td>
+        <td className="px-3 py-2.5 whitespace-nowrap">{def.points ?? 0}</td>
         <td className="px-3 py-2.5 whitespace-nowrap">{dueOffsetLabel(def.dueOffsetDays)}</td>
         <td className="px-3 py-2.5">
           {def.active ? (
@@ -236,7 +245,7 @@ function DefinitionRow({ def, editing, busy, onEdit, onCancelEdit, onSave, onTog
       </tr>
       {editing && (
         <tr className="border-b border-neutral-100 bg-indigo-50/40">
-          <td colSpan={8} className="px-3 py-4">
+          <td colSpan={9} className="px-3 py-4">
             <TaskForm
               initial={def}
               submitLabel="Save changes"

@@ -7,8 +7,10 @@
  * first (`npm run dev` or `npm run dev:server`).
  *
  * Safe to re-run: users are matched by name and definitions by title, so
- * anything already present is skipped. After clearing tasks (debug panel or
- * deleting server/data/), just run it again.
+ * anything already present is skipped. Existing definitions whose
+ * autoAssignableTo list has drifted from the desired one are updated in
+ * place. After clearing tasks (debug panel or deleting server/data/), just
+ * run it again.
  *
  * Usage:
  *   npm run seed                              # from the repo root or server/
@@ -24,36 +26,82 @@ const USERS = ['Akhil', 'Eriko', 'Maya', 'Neha'];
 /** "Monthly" in the rota maps to every 4 weeks. */
 const RECURRENCE = 'weekly-4';
 
+/** Default auto-assign pool for tasks that don't override it. */
+const DEFAULT_AUTO_ASSIGN = ['Akhil', 'Eriko'];
+
 interface SeedTask {
   title: string;
   /** yyyy-MM-dd of the first occurrence. */
   startDate: string;
   /** Days after the occurrence the instance is due (0 = same day). */
   dueOffsetDays: number;
+  /**
+   * Names of the users new occurrences may be auto-assigned to (the least
+   * busy one wins). Defaults to DEFAULT_AUTO_ASSIGN.
+   */
+  autoAssign?: string[];
 }
 
 const TASKS: SeedTask[] = [
-  { title: 'Clean bathroom 1 floor', startDate: '2026-07-25', dueOffsetDays: 1 },
+  {
+    title: 'Clean bathroom 1 floor',
+    startDate: '2026-07-25',
+    dueOffsetDays: 1,
+    autoAssign: ['Akhil', 'Eriko'],
+  },
   {
     title: 'Clean bathroom 1 toilet bowl inside and outside and wipe flush tank',
     startDate: '2026-08-14',
     dueOffsetDays: 1,
+    autoAssign: ['Akhil', 'Eriko'],
   },
-  { title: 'Clean bathroom 2 floor', startDate: '2026-08-01', dueOffsetDays: 1 },
-  { title: 'Clean shower 1 walls and floor rails', startDate: '2026-08-01', dueOffsetDays: 1 },
-  { title: 'Clean shower 2 screen and floor rails', startDate: '2026-07-25', dueOffsetDays: 1 },
-  { title: 'Clean the microwave inside and outside', startDate: '2026-07-25', dueOffsetDays: 1 },
-  { title: 'Dust under all the sofas', startDate: '2026-08-08', dueOffsetDays: 1 },
-  { title: 'vacuum all the places vac vac cant reach', startDate: '2026-08-08', dueOffsetDays: 1 },
+  {
+    title: 'Clean bathroom 2 floor',
+    startDate: '2026-08-01',
+    dueOffsetDays: 1,
+    autoAssign: ['Akhil', 'Eriko'],
+  },
+  {
+    title: 'Clean shower 1 walls and floor rails',
+    startDate: '2026-08-01',
+    dueOffsetDays: 1,
+    autoAssign: ['Akhil', 'Eriko'],
+  },
+  {
+    title: 'Clean shower 2 screen and floor rails',
+    startDate: '2026-07-25',
+    dueOffsetDays: 1,
+    autoAssign: ['Akhil', 'Eriko'],
+  },
+  {
+    title: 'Clean the microwave inside and outside',
+    startDate: '2026-07-25',
+    dueOffsetDays: 1,
+    autoAssign: ['Akhil', 'Eriko'],
+  },
+  {
+    title: 'Dust under all the sofas',
+    startDate: '2026-08-08',
+    dueOffsetDays: 1,
+    autoAssign: ['Maya', 'Neha'],
+  },
+  {
+    title: 'vacuum all the places vac vac cant reach',
+    startDate: '2026-08-08',
+    dueOffsetDays: 1,
+    autoAssign: ['Akhil', 'Eriko'],
+  },
   {
     title: 'Wipe the fridge outside and side as much as possible',
     startDate: '2026-08-01',
     dueOffsetDays: 1,
+    autoAssign: ['Maya', 'Neha'],
   },
-    {
+  {
     title: 'Mowing edging hedging weed killer spray',
     startDate: '2026-08-15',
     dueOffsetDays: 1,
+    autoAssign: ['Akhil'],
   },
 ];
 
@@ -67,6 +115,11 @@ async function api<T>(method: string, path: string, body?: unknown): Promise<T> 
     throw new Error(`${method} ${path} → ${res.status}: ${await res.text()}`);
   }
   return (await res.json()) as T;
+}
+
+/** Order-sensitive comparison — candidate order is the tie-break, so it matters. */
+function sameIds(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((id, i) => id === b[i]);
 }
 
 async function main(): Promise<void> {
@@ -88,22 +141,43 @@ async function main(): Promise<void> {
     console.log(`  user  created ${user.name}`);
   }
 
+  // Resolve names → ids for the auto-assign pools (users may have pre-existed).
+  const allUsers = await api<User[]>('GET', '/api/users');
+  const idByName = new Map(allUsers.map((u) => [u.name.toLowerCase(), u.id]));
+  const idsFor = (names: string[]): string[] =>
+    names.map((name) => {
+      const id = idByName.get(name.toLowerCase());
+      if (!id) throw new Error(`seed user ${name} is missing — cannot build auto-assign pool`);
+      return id;
+    });
+
   const existingDefs = await api<TaskDefinition[]>('GET', '/api/task-definitions');
-  const defTitles = new Set(existingDefs.map((d) => d.title.toLowerCase()));
+  const defByTitle = new Map(existingDefs.map((d) => [d.title.toLowerCase(), d]));
   for (const task of TASKS) {
-    if (defTitles.has(task.title.toLowerCase())) {
-      console.log(`  task  skip    ${task.title} (already exists)`);
+    const autoAssign = task.autoAssign ?? DEFAULT_AUTO_ASSIGN;
+    const autoAssignableTo = idsFor(autoAssign);
+    const autoLabel = `auto → ${autoAssign.join(', ')}`;
+
+    const existing = defByTitle.get(task.title.toLowerCase());
+    if (existing) {
+      if (sameIds(existing.autoAssignableTo ?? [], autoAssignableTo)) {
+        console.log(`  task  skip    ${task.title} (already exists)`);
+        continue;
+      }
+      await api<TaskDefinition>('PATCH', `/api/task-definitions/${existing.id}`, { autoAssignableTo });
+      console.log(`  task  updated ${task.title} — ${autoLabel}`);
       continue;
     }
+
     await api<TaskDefinition>('POST', '/api/task-definitions', {
       title: task.title,
       recurrence: RECURRENCE,
-      assigneeId: null, // Anyone
+      autoAssignableTo,
       dueOffsetDays: task.dueOffsetDays,
       startDate: task.startDate,
     });
     const due = task.dueOffsetDays === 0 ? 'same day' : `+${task.dueOffsetDays} days`;
-    console.log(`  task  created ${task.title} — every 4 weeks from ${task.startDate}, due ${due}`);
+    console.log(`  task  created ${task.title} — every 4 weeks from ${task.startDate}, due ${due}, ${autoLabel}`);
   }
 
   console.log('Seed complete.');

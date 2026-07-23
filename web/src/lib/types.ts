@@ -33,8 +33,10 @@ export interface TaskDefinition {
   title: string;
   description: string;
   recurrence: Recurrence;
-  /** null = assigned to "anyone" */
-  assigneeId: string | null;
+  /** Difficulty estimate (0–100); summed to balance auto-assignment across users. */
+  points: number;
+  /** Users hydrated instances may be auto-assigned to (least busy wins); empty = instances go to "anyone". */
+  autoAssignableTo: string[];
   /** due N days after each occurrence date */
   dueOffsetDays: number;
   /** yyyy-MM-dd of the first occurrence; null = anchored on the creation date */
@@ -52,6 +54,8 @@ export interface TaskInstance {
   description: string;
   /** null = anyone can do it */
   assigneeId: string | null;
+  /** Difficulty snapshot from the definition at hydration time. */
+  points: number;
   /** yyyy-MM-dd — the day this occurrence is for */
   occurrenceDate: string;
   /** yyyy-MM-dd */
