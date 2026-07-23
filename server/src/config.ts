@@ -13,7 +13,7 @@ export const config = {
   /** Spoof the current date at boot, e.g. SPOOF_DATE=2026-08-01 */
   spoofDate: process.env.SPOOF_DATE ?? null,
   /** Seed these users on first run (only when the users file is empty). */
-  seedUsers: (process.env.SEED_USERS ?? 'Alex,Jordan,Sam')
+  seedUsers: (process.env.SEED_USERS ?? 'Akhil,Eriko,Maya,Neha')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),

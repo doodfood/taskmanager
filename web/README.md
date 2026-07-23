@@ -24,7 +24,7 @@ The API base URL comes from `NEXT_PUBLIC_API_URL` in `.env.local` (default `http
 | Route | Purpose |
 |-------|---------|
 | `/` | Dashboard — your next 7 days (pending, **overdue included**) plus recently completed, grouped by due date: Overdue / Today / Tomorrow / weekday+date |
-| `/tasks/new` | Create a task: one-off or recurring (daily/weekly/monthly/quarterly), assignee or "Anyone", due offset in days |
+| `/tasks/new` | Create a task: one-off or recurring (weekly, every 2 weeks … every 13 weeks), assignee or "Anyone", due offset in days |
 | `/users` | Identity picker (colour tiles, no auth) + add/remove household members |
 
 ## Structure

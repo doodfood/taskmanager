@@ -87,23 +87,58 @@ describe('API', () => {
     ctx = await makeTestContext('2026-07-20');
     const app = buildApp(ctx.storage);
 
-    await request(app).post('/api/task-definitions').send({ title: 'Daily chore', recurrence: 'daily' });
+    await request(app).post('/api/task-definitions').send({ title: 'Weekly chore', recurrence: 'weekly-1' });
     let instances = await request(app).get('/api/task-instances');
-    expect(instances.body).toHaveLength(2); // today + tomorrow horizon
+    expect(instances.body).toHaveLength(1); // today's occurrence; next is a week out
 
     const spoof = await request(app).post('/api/debug/clock').send({ date: '2026-07-25' });
     expect(spoof.status).toBe(200);
     expect(spoof.body.spoofed).toBe(true);
     expect(spoof.body.today).toBe('2026-07-25');
-    // Default horizon is 5 days (HYDRATION_HORIZON_DAYS), so the spoof jump
-    // materialises 07-22 … 07-30 (07-20/07-21 were created at definition time).
-    expect(spoof.body.hydrated).toBe(9);
+    // Default horizon is 5 days (HYDRATION_HORIZON_DAYS) → horizon 07-30, so the
+    // spoof jump materialises 07-27 (07-20 was created at definition time).
+    expect(spoof.body.hydrated).toBe(1);
 
     instances = await request(app).get('/api/task-instances');
-    expect(instances.body).toHaveLength(11);
+    expect(instances.body).toHaveLength(2);
 
     const reset = await request(app).delete('/api/debug/clock');
     expect(reset.body.spoofed).toBe(false);
+  });
+
+  it('debug reset endpoints clear instances and reset hydration watermarks', async () => {
+    ctx = await makeTestContext('2026-07-20');
+    const app = buildApp(ctx.storage);
+
+    // Hydrate a weekly definition across the horizon.
+    await request(app).post('/api/task-definitions').send({ title: 'Weekly chore', recurrence: 'weekly-1' });
+    expect((await request(app).get('/api/task-instances')).body).toHaveLength(1);
+    const defsBefore = await request(app).get('/api/task-definitions');
+    expect(defsBefore.body[0].lastHydratedDate).not.toBeNull();
+
+    // Reset watermarks only: instances stay, watermark goes back to null.
+    const watermarks = await request(app).post('/api/debug/reset-watermarks');
+    expect(watermarks.status).toBe(200);
+    expect(watermarks.body.reset).toBe(1);
+    expect((await request(app).get('/api/task-instances')).body).toHaveLength(1);
+    const defsAfter = await request(app).get('/api/task-definitions');
+    expect(defsAfter.body[0].lastHydratedDate).toBeNull();
+    // Idempotent: nothing left to reset.
+    expect((await request(app).post('/api/debug/reset-watermarks')).body.reset).toBe(0);
+
+    // Clear instances only: definitions untouched.
+    const cleared = await request(app).post('/api/debug/clear-instances');
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.cleared).toBe(1);
+    expect((await request(app).get('/api/task-instances')).body).toHaveLength(0);
+    // Idempotent: nothing left to clear.
+    expect((await request(app).post('/api/debug/clear-instances')).body.cleared).toBe(0);
+
+    // The full testing loop: after clear + reset, jumping the clock rehydrates
+    // the whole series from the definition anchor.
+    const spoof = await request(app).post('/api/debug/clock').send({ date: '2026-07-25' });
+    expect(spoof.body.hydrated).toBe(2); // 07-20 and 07-27 (horizon 07-30)
+    expect((await request(app).get('/api/task-instances')).body).toHaveLength(2);
   });
 
   it('rejects an invalid spoof date', async () => {

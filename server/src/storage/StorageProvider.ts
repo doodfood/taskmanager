@@ -26,4 +26,6 @@ export interface StorageProvider {
   updateInstance(id: string, patch: Partial<Omit<TaskInstance, 'id'>>): Promise<TaskInstance | null>;
   deleteInstance(id: string): Promise<boolean>;
   instanceExists(definitionId: string, occurrenceDate: string): Promise<boolean>;
+  /** Removes every instance; returns the number removed. Used by debug/test tooling. */
+  clearInstances(): Promise<number>;
 }

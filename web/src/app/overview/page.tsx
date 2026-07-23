@@ -6,19 +6,11 @@ import { ClockSpoofer } from '@/components/ClockSpoofer';
 import { TaskCard } from '@/components/TaskCard';
 import { useUser } from '@/context/UserContext';
 import { getClock, listInstances } from '@/lib/api';
-import { addDaysStr, formatDateShort } from '@/lib/dates';
+import { formatDateShort } from '@/lib/dates';
 import type { ClockState, TaskInstance } from '@/lib/types';
 
 /** Assignee-group keys that can't collide with a user UUID. */
 const ANYONE = '__anyone__';
-
-/**
- * How far ahead (from the server's "today") the overview looks. Kept in step
- * with the server's hydration horizon (HYDRATION_HORIZON_DAYS, default 5) —
- * widening this beyond the horizon shows nothing extra for recurring tasks,
- * since their instances wouldn't have been materialised yet.
- */
-const WINDOW_DAYS = 5;
 
 interface UserGroup {
   key: string;
@@ -43,10 +35,12 @@ export default function OverviewPage() {
 
   const load = useCallback(async () => {
     try {
-      // The server's (possibly spoofed) "today" bounds the window, so
-      // ClockSpoofer scenarios render exactly as the server sees them.
-      const clk = await getClock();
-      const items = await listInstances({ status: 'pending', to: addDaysStr(clk.today, WINDOW_DAYS) });
+      // No dueDate window: hydration only materialises occurrences up to the
+      // server horizon, so the pending set is inherently bounded — and no
+      // materialised task can hide here while showing on a dashboard (a
+      // dueDate-based window did exactly that once dueOffsetDays pushed the
+      // due date past it).
+      const [clk, items] = await Promise.all([getClock(), listInstances({ status: 'pending' })]);
       setClock(clk);
       setPending(items);
       setError(null);
@@ -84,16 +78,16 @@ export default function OverviewPage() {
     });
 
     const result: UserGroup[] = [];
-    // The communal pool first — unassigned tasks still need an owner.
-    const anyone = byAssignee.get(ANYONE);
-    if (anyone) result.push(make(ANYONE, 'Anyone', null, anyone));
+    // The communal pool first — unassigned tasks still need an owner. Always
+    // rendered, even when empty, so the category is as visible as each member.
+    result.push(make(ANYONE, 'Anyone', null, byAssignee.get(ANYONE) ?? []));
+    byAssignee.delete(ANYONE);
     // Every household member, even with an empty list, so each person can see
     // at a glance that they have nothing due.
     for (const u of users) {
       result.push(make(u.id, u.name, u.color, byAssignee.get(u.id) ?? []));
       byAssignee.delete(u.id);
     }
-    byAssignee.delete(ANYONE);
     // Surface tasks whose assignee was deleted rather than dropping them.
     for (const [key, items] of byAssignee) {
       result.push(make(key, 'Unknown', null, items));
@@ -132,8 +126,9 @@ export default function OverviewPage() {
         </div>
       </header>
       <p className="mt-1 text-sm text-neutral-500">
-        Everyone&rsquo;s pending tasks — anything overdue plus everything due in the next {WINDOW_DAYS} days — grouped
-        by person. Completed tasks are hidden; completing here records <strong>{me.name}</strong> as the doer.
+        Everyone&rsquo;s pending tasks — anything overdue plus everything materialised so far — grouped by person,
+        with unassigned tasks under Anyone. Completed tasks are hidden; completing here records{' '}
+        <strong>{me.name}</strong> as the doer.
       </p>
 
       {clock?.spoofed && (

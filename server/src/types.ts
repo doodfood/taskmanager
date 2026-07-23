@@ -1,6 +1,18 @@
-export type Recurrence = 'none' | 'daily' | 'weekly' | 'monthly' | 'quarterly';
+/** Valid week intervals for recurring tasks: 1–13 weeks. */
+export type WeeklyInterval = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
 
-export const RECURRENCES: readonly Recurrence[] = ['none', 'daily', 'weekly', 'monthly', 'quarterly'];
+/** 'none' = one-off; 'weekly-N' = repeats every N weeks (N = 1…13). */
+export type Recurrence = 'none' | `weekly-${WeeklyInterval}`;
+
+export const RECURRENCES: readonly Recurrence[] = [
+  'none',
+  ...(Array.from({ length: 13 }, (_, i) => `weekly-${i + 1}`) as Recurrence[]),
+];
+
+/** Weeks between occurrences for a recurring cadence ('weekly-3' → 3). */
+export function recurrenceIntervalWeeks(recurrence: Exclude<Recurrence, 'none'>): number {
+  return Number(recurrence.slice('weekly-'.length));
+}
 
 export type TaskStatus = 'pending' | 'completed';
 

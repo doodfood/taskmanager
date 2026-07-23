@@ -121,3 +121,13 @@ export const setClock = (date: string | null) =>
   request<ClockState & { hydrated?: number }>('/debug/clock', { method: 'POST', body: JSON.stringify({ date }) });
 
 export const resetClock = () => request<ClockState>('/debug/clock', { method: 'DELETE' });
+
+// ---- debug hydration reset (dev tool) ---------------------------------------
+
+/** Deletes every hydrated task instance; returns how many were removed. */
+export const clearInstances = () =>
+  request<{ cleared: number }>('/debug/clear-instances', { method: 'POST' });
+
+/** Sets lastHydratedDate back to null on every definition; returns how many changed. */
+export const resetWatermarks = () =>
+  request<{ reset: number }>('/debug/reset-watermarks', { method: 'POST' });

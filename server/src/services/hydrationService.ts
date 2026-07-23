@@ -1,20 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { addDays, addMonths, addWeeks, format, parseISO } from 'date-fns';
+import { addWeeks, format, parseISO } from 'date-fns';
 import { addDaysStr, nowIso, todayPlus } from '../clock.js';
 import type { StorageProvider } from '../storage/StorageProvider.js';
-import type { Recurrence, TaskDefinition, TaskInstance } from '../types.js';
+import { recurrenceIntervalWeeks, type Recurrence, type TaskDefinition, type TaskInstance } from '../types.js';
 
-/** Advance a yyyy-MM-dd date by one recurrence interval. */
+/** Advance a yyyy-MM-dd date by one recurrence interval (N weeks). */
 export function stepDate(dateStr: string, recurrence: Exclude<Recurrence, 'none'>): string {
-  const d = parseISO(dateStr);
-  const next =
-    recurrence === 'daily'
-      ? addDays(d, 1)
-      : recurrence === 'weekly'
-        ? addWeeks(d, 1)
-        : recurrence === 'monthly'
-          ? addMonths(d, 1)
-          : addMonths(d, 3); // quarterly
+  const next = addWeeks(parseISO(dateStr), recurrenceIntervalWeeks(recurrence));
   return format(next, 'yyyy-MM-dd');
 }
 

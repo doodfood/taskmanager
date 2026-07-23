@@ -159,4 +159,12 @@ export class JsonFileStorage implements StorageProvider {
       this.data.instances.some((i) => i.definitionId === definitionId && i.occurrenceDate === occurrenceDate),
     );
   }
+
+  async clearInstances(): Promise<number> {
+    const removed = this.data.instances.length;
+    if (removed === 0) return 0;
+    this.data.instances = [];
+    await this.persist('instances');
+    return removed;
+  }
 }

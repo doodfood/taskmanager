@@ -1,0 +1,29 @@
+Family tasks example 
+
+Clean bathroom 1 floor
+Monthly	Sat 25 Jul	
+Anyone	+7 days	Active	—	EditDeactivateDelete
+Clean bathroom 1 toilet bowl inside and outside and wipe flush tank
+Monthly	Fri 14 Aug	
+Anyone	+7 days	Active	—	EditDeactivateDelete
+Clean bathroom 2 floor
+Monthly	Sat 1 Aug	
+Anyone	+7 days	Active	—	EditDeactivateDelete
+Clean shower 1 walls and floor rails
+Monthly	Sat 1 Aug	
+Anyone	Same day	Active	—	EditDeactivateDelete
+Clean shower 2 screen and floor rails
+Monthly	Sat 25 Jul	
+Anyone	+7 days	Active	—	EditDeactivateDelete
+Clean the microwave inside and outside
+Monthly	Sat 25 Jul	
+Anyone	+7 days	Active	—	EditDeactivateDelete
+Dust under all the sofas
+Monthly	Sat 8 Aug	
+Anyone	Same day	Active	—	EditDeactivateDelete
+vacuum all the places vac vac cant reach
+Monthly	Sat 8 Aug	
+Anyone	Same day	Active	—	EditDeactivateDelete
+Wipe the fridge outside and side as much as possible
+Monthly	Sat 1 Aug	
+Anyone	+7 days	Active	—	EditDeactivateDelete

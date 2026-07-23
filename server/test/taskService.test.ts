@@ -75,21 +75,19 @@ describe('taskService — definitions', () => {
   it('PATCH accepts startDate, but the hydration watermark keeps driving the series', async () => {
     ctx = await makeTestContext('2026-07-20');
     const tasks = createTaskService(ctx.storage);
-    const def = await tasks.createDefinition({ title: 'Daily', recurrence: 'daily' });
-    expect((await ctx.storage.listInstances()).map((i) => i.occurrenceDate).sort()).toEqual([
-      '2026-07-20',
-      '2026-07-21',
-    ]);
+    const def = await tasks.createDefinition({ title: 'Weekly', recurrence: 'weekly-1' });
+    expect((await ctx.storage.listInstances()).map((i) => i.occurrenceDate)).toEqual(['2026-07-20']);
 
     // Moving startDate after hydration has begun must not move the series —
-    // lastHydratedDate (2026-07-21) wins, so the next occurrence is 07-22.
+    // lastHydratedDate (2026-07-20) wins, so the next occurrence is 07-27,
+    // not 08-01 (the patched startDate).
     const updated = await tasks.updateDefinition(def.id, { startDate: '2026-08-01' });
     expect(updated.startDate).toBe('2026-08-01');
 
-    setSpoofedDate('2026-07-22T09:00:00');
+    setSpoofedDate('2026-07-27T09:00:00');
     await hydrateAll(ctx.storage, 1);
     const dates = (await ctx.storage.listInstances()).map((i) => i.occurrenceDate).sort();
-    expect(dates).toEqual(['2026-07-20', '2026-07-21', '2026-07-22', '2026-07-23']);
+    expect(dates).toEqual(['2026-07-20', '2026-07-27']);
 
     // …and the same validation rules apply on PATCH.
     await expect(tasks.updateDefinition(def.id, { startDate: 'not-a-date' })).rejects.toThrow(HttpError);
@@ -99,8 +97,10 @@ describe('taskService — definitions', () => {
     ctx = await makeTestContext();
     const tasks = createTaskService(ctx.storage);
 
-    await expect(tasks.createDefinition({ recurrence: 'daily' })).rejects.toThrow(HttpError);
+    await expect(tasks.createDefinition({ recurrence: 'weekly-1' })).rejects.toThrow(HttpError);
     await expect(tasks.createDefinition({ title: 'x', recurrence: 'fortnightly' })).rejects.toThrow(HttpError);
+    await expect(tasks.createDefinition({ title: 'x', recurrence: 'weekly' })).rejects.toThrow(HttpError);
+    await expect(tasks.createDefinition({ title: 'x', recurrence: 'weekly-14' })).rejects.toThrow(HttpError);
     await expect(tasks.createDefinition({ title: 'x', dueOffsetDays: -1 })).rejects.toThrow(HttpError);
     await expect(tasks.createDefinition({ title: 'x', assigneeId: 'no-such-user' })).rejects.toThrow(HttpError);
   });
@@ -108,7 +108,7 @@ describe('taskService — definitions', () => {
   it('supports "anyone" assignment via null assigneeId', async () => {
     ctx = await makeTestContext();
     const tasks = createTaskService(ctx.storage);
-    await tasks.createDefinition({ title: 'Shared chore', recurrence: 'daily', assigneeId: null });
+    await tasks.createDefinition({ title: 'Shared chore', recurrence: 'weekly-1', assigneeId: null });
     const [instance] = await ctx.storage.listInstances();
     expect(instance.assigneeId).toBeNull();
   });
@@ -116,13 +116,13 @@ describe('taskService — definitions', () => {
   it('deleting a definition removes its pending instances but keeps completed ones', async () => {
     ctx = await makeTestContext('2026-07-20');
     const tasks = createTaskService(ctx.storage);
-    const def = await tasks.createDefinition({ title: 'Daily', recurrence: 'daily' });
+    const def = await tasks.createDefinition({ title: 'Weekly', recurrence: 'weekly-1' });
     const [first] = await ctx.storage.listInstances();
     await tasks.complete(first.id, ctx.users[0].id);
 
-    setSpoofedDate('2026-07-21T09:00:00');
+    setSpoofedDate('2026-07-27T09:00:00');
     await hydrateAll(ctx.storage, 1);
-    expect(await ctx.storage.listInstances()).toHaveLength(3); // 07-20 done, 07-21, 07-22 pending
+    expect(await ctx.storage.listInstances()).toHaveLength(2); // 07-20 done, 07-27 pending
 
     await tasks.deleteDefinition(def.id);
     const remaining = await ctx.storage.listInstances();

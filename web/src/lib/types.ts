@@ -1,8 +1,22 @@
 /** Shared API types — mirrors server/src/types.ts. Keep in sync manually. */
 
-export type Recurrence = 'none' | 'daily' | 'weekly' | 'monthly' | 'quarterly';
+/** Valid week intervals for recurring tasks: 1–13 weeks. */
+export type WeeklyInterval = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
 
-export const RECURRENCES: readonly Recurrence[] = ['none', 'daily', 'weekly', 'monthly', 'quarterly'];
+/** 'none' = one-off; 'weekly-N' = repeats every N weeks (N = 1…13). */
+export type Recurrence = 'none' | `weekly-${WeeklyInterval}`;
+
+export const RECURRENCES: readonly Recurrence[] = [
+  'none',
+  ...(Array.from({ length: 13 }, (_, i) => `weekly-${i + 1}`) as Recurrence[]),
+];
+
+/** Human label for a recurrence ('weekly-3' → 'Every 3 weeks'). */
+export function recurrenceLabel(recurrence: Recurrence): string {
+  if (recurrence === 'none') return 'One-off';
+  const weeks = Number(recurrence.slice('weekly-'.length));
+  return weeks === 1 ? 'Weekly' : `Every ${weeks} weeks`;
+}
 
 export type TaskStatus = 'pending' | 'completed';
 

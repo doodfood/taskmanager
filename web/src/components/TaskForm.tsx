@@ -3,17 +3,14 @@
 import { useId, useState, type FormEvent, type ReactNode } from 'react';
 import { useUser } from '@/context/UserContext';
 import { toDateStr } from '@/lib/dates';
-import type { Recurrence, TaskDefinition } from '@/lib/types';
+import { RECURRENCES, recurrenceLabel, type Recurrence, type TaskDefinition } from '@/lib/types';
 
 const ANYONE = '__anyone__';
 
-const RECURRENCE_OPTIONS: { value: Recurrence; label: string }[] = [
-  { value: 'none', label: 'One-off (does not repeat)' },
-  { value: 'daily', label: 'Daily' },
-  { value: 'weekly', label: 'Weekly' },
-  { value: 'monthly', label: 'Monthly' },
-  { value: 'quarterly', label: 'Quarterly' },
-];
+const RECURRENCE_OPTIONS: { value: Recurrence; label: string }[] = RECURRENCES.map((value) => ({
+  value,
+  label: value === 'none' ? 'One-off (does not repeat)' : recurrenceLabel(value),
+}));
 
 /** Field values the form produces. `assigneeId: null` means "anyone". */
 export interface TaskFormValues {

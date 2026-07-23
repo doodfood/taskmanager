@@ -56,5 +56,39 @@ export function debugRouter(storage: StorageProvider): Router {
     }
   });
 
+  /**
+   * Scenario-testing reset: delete every hydrated task instance. Pair with
+   * /reset-watermarks, then jump the clock to rehydrate a clean slate.
+   */
+  router.post('/clear-instances', async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const cleared = await storage.clearInstances();
+      res.json({ cleared });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * Scenario-testing reset: set lastHydratedDate back to null on every task
+   * definition, so the next hydration pass re-materialises from each
+   * definition's anchor (startDate ?? creation date).
+   */
+  router.post('/reset-watermarks', async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const defs = await storage.listDefinitions();
+      let reset = 0;
+      for (const def of defs) {
+        if (def.lastHydratedDate !== null) {
+          await storage.updateDefinition(def.id, { lastHydratedDate: null });
+          reset++;
+        }
+      }
+      res.json({ reset });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   return router;
 }

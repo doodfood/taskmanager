@@ -16,60 +16,60 @@ afterEach(async () => {
 
 describe('stepDate', () => {
   it('steps by each recurrence interval', () => {
-    expect(stepDate('2026-07-20', 'daily')).toBe('2026-07-21');
-    expect(stepDate('2026-07-20', 'weekly')).toBe('2026-07-27');
-    expect(stepDate('2026-07-20', 'monthly')).toBe('2026-08-20');
-    expect(stepDate('2026-07-20', 'quarterly')).toBe('2026-10-20');
+    expect(stepDate('2026-07-20', 'weekly-1')).toBe('2026-07-27');
+    expect(stepDate('2026-07-20', 'weekly-2')).toBe('2026-08-03');
+    expect(stepDate('2026-07-20', 'weekly-3')).toBe('2026-08-10');
+    expect(stepDate('2026-07-20', 'weekly-13')).toBe('2026-10-19');
   });
 
   it('handles month/year boundaries', () => {
-    expect(stepDate('2026-01-31', 'monthly')).toBe('2026-02-28');
-    expect(stepDate('2026-12-31', 'daily')).toBe('2027-01-01');
+    expect(stepDate('2026-01-31', 'weekly-4')).toBe('2026-02-28');
+    expect(stepDate('2026-12-31', 'weekly-1')).toBe('2027-01-07');
   });
 });
 
 describe('hydration', () => {
-  it('creates occurrences for a daily task up to the horizon (today + 1)', async () => {
+  it('creates the first occurrence of a weekly task at creation (next is beyond the horizon)', async () => {
     ctx = await makeTestContext('2026-07-20');
     const tasks = createTaskService(ctx.storage);
-    await tasks.createDefinition({ title: 'Water plants', recurrence: 'daily' });
+    await tasks.createDefinition({ title: 'Water plants', recurrence: 'weekly-1' });
 
     const result = await hydrateAll(ctx.storage, 1);
-    expect(result.created).toBe(0); // creation already hydrated today + tomorrow
+    expect(result.created).toBe(0); // creation already hydrated today's occurrence
 
     const instances = await ctx.storage.listInstances();
-    expect(instances.map((i) => i.occurrenceDate).sort()).toEqual(['2026-07-20', '2026-07-21']);
+    expect(instances.map((i) => i.occurrenceDate)).toEqual(['2026-07-20']); // next: 2026-07-27
   });
 
   it('is idempotent — running repeatedly creates no duplicates', async () => {
     ctx = await makeTestContext('2026-07-20');
     const tasks = createTaskService(ctx.storage);
-    await tasks.createDefinition({ title: 'Water plants', recurrence: 'daily' });
+    await tasks.createDefinition({ title: 'Water plants', recurrence: 'weekly-1' });
 
     await hydrateAll(ctx.storage, 1);
     await hydrateAll(ctx.storage, 1);
     const result = await hydrateAll(ctx.storage, 1);
     expect(result.created).toBe(0);
-    expect(await ctx.storage.listInstances()).toHaveLength(2);
+    expect(await ctx.storage.listInstances()).toHaveLength(1);
   });
 
   it('hydrates new occurrences as the (spoofed) clock advances', async () => {
     ctx = await makeTestContext('2026-07-20');
     const tasks = createTaskService(ctx.storage);
-    await tasks.createDefinition({ title: 'Water plants', recurrence: 'daily' });
+    await tasks.createDefinition({ title: 'Water plants', recurrence: 'weekly-2' });
 
-    setSpoofedDate('2026-07-23T09:00:00');
+    setSpoofedDate('2026-08-20T09:00:00');
     const result = await hydrateAll(ctx.storage, 1);
-    expect(result.created).toBe(3); // 07-22, 07-23 and 07-24 (07-20/07-21 created at definition time)
+    expect(result.created).toBe(2); // 08-03 and 08-17 (07-20 created at definition time)
 
     const dates = (await ctx.storage.listInstances()).map((i) => i.occurrenceDate).sort();
-    expect(dates).toEqual(['2026-07-20', '2026-07-21', '2026-07-22', '2026-07-23', '2026-07-24']);
+    expect(dates).toEqual(['2026-07-20', '2026-08-03', '2026-08-17']);
   });
 
   it('hydrates weekly occurrences 7 days apart', async () => {
     ctx = await makeTestContext('2026-07-20');
     const tasks = createTaskService(ctx.storage);
-    await tasks.createDefinition({ title: 'Bins', recurrence: 'weekly' });
+    await tasks.createDefinition({ title: 'Bins', recurrence: 'weekly-1' });
 
     setSpoofedDate('2026-08-05T09:00:00');
     await hydrateAll(ctx.storage, 1);
@@ -81,7 +81,7 @@ describe('hydration', () => {
   it('applies dueOffsetDays to the due date', async () => {
     ctx = await makeTestContext('2026-07-20');
     const tasks = createTaskService(ctx.storage);
-    await tasks.createDefinition({ title: 'Vacuum', recurrence: 'daily', dueOffsetDays: 2 });
+    await tasks.createDefinition({ title: 'Vacuum', recurrence: 'weekly-1', dueOffsetDays: 2 });
 
     const [instance] = await ctx.storage.listInstances();
     expect(instance.occurrenceDate).toBe('2026-07-20');
@@ -91,7 +91,7 @@ describe('hydration', () => {
   it('skips inactive definitions', async () => {
     ctx = await makeTestContext('2026-07-20');
     const tasks = createTaskService(ctx.storage);
-    const def = await tasks.createDefinition({ title: 'Bins', recurrence: 'weekly' });
+    const def = await tasks.createDefinition({ title: 'Bins', recurrence: 'weekly-1' });
     const before = (await ctx.storage.listInstances()).length;
 
     await tasks.updateDefinition(def.id, { active: false });
@@ -105,7 +105,7 @@ describe('hydration', () => {
   it('anchors a weekly series on startDate instead of the creation date', async () => {
     ctx = await makeTestContext('2026-07-20');
     const tasks = createTaskService(ctx.storage);
-    const def = await tasks.createDefinition({ title: 'Bins', recurrence: 'weekly', startDate: '2026-08-03' });
+    const def = await tasks.createDefinition({ title: 'Bins', recurrence: 'weekly-1', startDate: '2026-08-03' });
     expect(def.startDate).toBe('2026-08-03');
 
     // Future startDate → creation-time hydration materialises nothing
@@ -121,23 +121,23 @@ describe('hydration', () => {
     expect(dates).toEqual(['2026-08-03']);
   });
 
-  it('hydrates a quarterly task starting next month only once the horizon reaches it', async () => {
+  it('hydrates a 13-weekly task starting next month only once the horizon reaches it', async () => {
     ctx = await makeTestContext('2026-07-20');
     const tasks = createTaskService(ctx.storage);
-    await tasks.createDefinition({ title: 'Insurance renewal', recurrence: 'quarterly', startDate: '2026-08-15' });
+    await tasks.createDefinition({ title: 'Insurance renewal', recurrence: 'weekly-13', startDate: '2026-08-15' });
     expect(await ctx.storage.listInstances()).toHaveLength(0);
 
     setSpoofedDate('2026-08-16T09:00:00');
     await hydrateAll(ctx.storage, 1);
 
     const dates = (await ctx.storage.listInstances()).map((i) => i.occurrenceDate);
-    expect(dates).toEqual(['2026-08-15']); // next: 2026-11-15, far beyond the horizon
+    expect(dates).toEqual(['2026-08-15']); // next: 2026-11-14, far beyond the horizon
   });
 
   it('hydrates nothing before startDate as the spoofed clock advances, then starts on the day', async () => {
     ctx = await makeTestContext('2026-07-20');
     const tasks = createTaskService(ctx.storage);
-    await tasks.createDefinition({ title: 'Garden', recurrence: 'weekly', startDate: '2026-08-01' });
+    await tasks.createDefinition({ title: 'Garden', recurrence: 'weekly-1', startDate: '2026-08-01' });
 
     // Advance to just before the start date: horizon 07-31 < 08-01 → nothing.
     setSpoofedDate('2026-07-30T09:00:00');
@@ -160,7 +160,7 @@ describe('hydration', () => {
       id: randomUUID(),
       title: 'Legacy weekly',
       description: '',
-      recurrence: 'weekly',
+      recurrence: 'weekly-1',
       assigneeId: null,
       dueOffsetDays: 0,
       active: true,
@@ -179,7 +179,7 @@ describe('hydration', () => {
   it('backfills occurrences for a definition created in the past', async () => {
     ctx = await makeTestContext('2026-07-20');
     const tasks = createTaskService(ctx.storage);
-    const def = await tasks.createDefinition({ title: 'Bins', recurrence: 'weekly' });
+    const def = await tasks.createDefinition({ title: 'Bins', recurrence: 'weekly-1' });
     // Simulate a definition created two weeks ago that has never hydrated.
     await ctx.storage.updateDefinition(def.id, {
       createdAt: '2026-07-06T09:00:00.000Z',

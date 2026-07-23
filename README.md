@@ -18,7 +18,7 @@ npm run setup        # install server/ and web/ dependencies
 npm run dev          # boot API (:4000) + web (:3000) together
 ```
 
-Open http://localhost:3000 — the first visit asks who you are (seeded users: Alex, Jordan, Sam, overridable via `SEED_USERS`). Delete `server/data/` to reset everything.
+Open http://localhost:3000 — the first visit asks who you are (seeded users: Akhil, Eriko, Maya, Neha, overridable via `SEED_USERS`). Delete `server/data/` to reset everything, then `npm run seed` (with the API running) to re-insert the users and the cleaning rota.
 
 ## Scripts (root)
 
@@ -26,7 +26,8 @@ Open http://localhost:3000 — the first visit asks who you are (seeded users: A
 |---------|---------|
 | `npm run dev` | Boot server + web together |
 | `npm run dev:server` / `npm run dev:web` | Boot just one side |
-| `npm test` | Server test suite (Vitest, 39 tests) |
+| `npm test` | Server test suite (Vitest) |
+| `npm run seed` | Insert the household users + cleaning-rota tasks via the API (idempotent; API must be running) |
 | `npm run lint` | Lint both packages |
 | `npm run build` | Build both packages |
 
@@ -37,7 +38,7 @@ All server-side time reads go through a clock you can jump:
 - **UI**: the "clock spoofer" panel at the bottom of the dashboard.
 - **API**: `POST /api/debug/clock { "date": "2026-08-01" }` re-runs hydration immediately; `DELETE` resets to real time.
 
-Try it: create a daily task, jump a week forward — the missed occurrences materialise and the early ones render as overdue.
+Try it: create a weekly task, jump a few weeks forward — the missed occurrences materialise and the early ones render as overdue.
 
 ## Status
 

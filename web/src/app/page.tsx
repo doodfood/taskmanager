@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ClockSpoofer } from '@/components/ClockSpoofer';
+import { HydrationReset } from '@/components/HydrationReset';
 import { TaskCard } from '@/components/TaskCard';
 import { useUser } from '@/context/UserContext';
 import { getClock, listInstances, upcoming } from '@/lib/api';
@@ -173,6 +174,7 @@ export default function DashboardPage() {
       </div>
 
       <ClockSpoofer clock={clock} onChanged={() => void load()} />
+      <HydrationReset onChanged={() => void load()} />
     </main>
   );
 }

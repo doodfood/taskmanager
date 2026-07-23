@@ -10,6 +10,7 @@
     "dev:web": "npm --prefix web run dev",
     "build": "npm --prefix server run build && npm --prefix web run build",
     "test": "npm --prefix server test",
+    "seed": "npm --prefix server run seed",
     "lint": "npm --prefix server run lint && npm --prefix web run lint"
   },
   "devDependencies": {

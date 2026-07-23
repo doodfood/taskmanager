@@ -7,15 +7,7 @@ import { AssigneeBadge } from '@/components/UserBadge';
 import { useUser } from '@/context/UserContext';
 import { deleteDefinition, listDefinitions, updateDefinition } from '@/lib/api';
 import { formatDateShort } from '@/lib/dates';
-import type { Recurrence, TaskDefinition } from '@/lib/types';
-
-const RECURRENCE_LABEL: Record<Recurrence, string> = {
-  none: 'One-off',
-  daily: 'Daily',
-  weekly: 'Weekly',
-  monthly: 'Monthly',
-  quarterly: 'Quarterly',
-};
+import { recurrenceLabel, type TaskDefinition } from '@/lib/types';
 
 function dueOffsetLabel(n: number): string {
   return n === 0 ? 'Same day' : `+${n} day${n === 1 ? '' : 's'}`;
@@ -200,7 +192,7 @@ function DefinitionRow({ def, editing, busy, onEdit, onCancelEdit, onSave, onTog
           <div className={`font-medium ${def.active ? 'text-neutral-900' : ''}`}>{def.title}</div>
           {def.description && <div className="mt-0.5 max-w-xs truncate text-xs text-neutral-500">{def.description}</div>}
         </td>
-        <td className="px-3 py-2.5 whitespace-nowrap">{RECURRENCE_LABEL[def.recurrence]}</td>
+        <td className="px-3 py-2.5 whitespace-nowrap">{recurrenceLabel(def.recurrence)}</td>
         <td className="px-3 py-2.5 whitespace-nowrap">{def.startDate ? formatDateShort(def.startDate) : '—'}</td>
         <td className="px-3 py-2.5">
           <AssigneeBadge assigneeId={def.assigneeId} />

@@ -57,7 +57,7 @@ occurrence/due dates; full UTC ISO timestamps for `createdAt`/`completedAt`
 ### Types
 
 ```ts
-type Recurrence = 'none' | 'daily' | 'weekly' | 'monthly' | 'quarterly';
+type Recurrence = 'none' | 'weekly-1' | 'weekly-2' | … | 'weekly-13'; // one-off, or every N weeks
 
 interface User { id: string; name: string; color: string; createdAt: string }
 
@@ -133,7 +133,7 @@ directly — no SSR/data-fetching-on-server needed (keeps date spoofing simple).
   description, due date, assignee badge (user name+colour, or "Anyone"),
   Complete button, reassign `<select>` (users + "Anyone"), reopen for completed.
 - **`/tasks/new`** — `TaskForm`: title, description, recurrence select
-  (one-off/daily/weekly/monthly/quarterly), assignee select (users + "Anyone"),
+  (one-off, weekly, every 2 weeks … every 13 weeks), assignee select (users + "Anyone"),
   due offset (number input "due N days after"), submit → POST
   `/task-definitions` → redirect to dashboard.
 - **`/users`** — `UserPicker` tiles (colour avatar + name); pick → save to
@@ -179,7 +179,7 @@ directly — no SSR/data-fetching-on-server needed (keeps date spoofing simple).
   when a user is deleted (API currently leaves orphans).
 - **Instance editing**: no PATCH on single occurrences (e.g. rename just this
   one, move a due date). Definition edits only affect future hydrations.
-- **More recurrences**: fortnightly, yearly, "every N days", specific weekday
+- **More recurrences**: yearly, "every N days", specific weekday
   rules (e.g. "bins every Tuesday").
 - **History/stats view**: completed instances per user, streaks for recurring
   tasks, "who did what this month".
@@ -238,7 +238,7 @@ Backend:
   begun, the `lastHydratedDate` watermark drives the series, so changing
   `startDate` does not move already-hydrated instances (same snapshot
   semantics as other edits).
-- Tests: one-off with a future date; weekly anchored to startDate; quarterly
+- Tests: one-off with a future date; weekly anchored to startDate; 13-weekly
   starting next month; spoofed clock crossing the startDate; back-compat with
   definitions lacking the field.
 

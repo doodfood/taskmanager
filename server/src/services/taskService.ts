@@ -79,7 +79,7 @@ export function createTaskService(storage: StorageProvider) {
 
       const recurrence = (input.recurrence ?? 'none') as Recurrence;
       if (!RECURRENCES.includes(recurrence)) {
-        throw badRequest(`recurrence must be one of: ${RECURRENCES.join(', ')}`);
+        throw badRequest("recurrence must be 'none' or 'weekly-N' with N between 1 and 13");
       }
 
       let dueOffsetDays = input.dueOffsetDays ?? 0;
@@ -136,7 +136,7 @@ export function createTaskService(storage: StorageProvider) {
       }
       if (patch.recurrence !== undefined) {
         if (!RECURRENCES.includes(patch.recurrence as Recurrence)) {
-          throw badRequest(`recurrence must be one of: ${RECURRENCES.join(', ')}`);
+          throw badRequest("recurrence must be 'none' or 'weekly-N' with N between 1 and 13");
         }
         updates.recurrence = patch.recurrence as Recurrence;
       }
