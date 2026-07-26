@@ -3,6 +3,7 @@ import { format, isValid, parseISO } from 'date-fns';
 import { nowIso, todayPlus, todayStr } from '../clock.js';
 import type { StorageProvider } from '../storage/StorageProvider.js';
 import {
+  DEFAULT_POINTS,
   RECURRENCES,
   badRequest,
   conflict,
@@ -12,6 +13,7 @@ import {
   type TaskInstance,
 } from '../types.js';
 import { hydrateDefinition, instanceFromDefinition } from './hydrationService.js';
+import { createPointsService } from './pointsService.js';
 
 export interface CreateDefinitionInput {
   title?: unknown;
@@ -60,9 +62,9 @@ function validateAssignee(storage: StorageProvider, assigneeId: unknown): Promis
   });
 }
 
-/** Difficulty estimate: undefined/null/'' → default 1, otherwise an integer 0–100. */
+/** Difficulty estimate: undefined/null/'' → DEFAULT_POINTS, otherwise an integer 0–100. */
 function validatePoints(value: unknown): number {
-  if (value === undefined || value === null || value === '') return 1;
+  if (value === undefined || value === null || value === '') return DEFAULT_POINTS;
   let points = value;
   if (typeof points === 'string' && points.trim() !== '') points = Number(points);
   if (typeof points !== 'number' || !Number.isInteger(points) || points < 0 || points > 100) {
@@ -90,6 +92,8 @@ async function validateAutoAssignableTo(storage: StorageProvider, value: unknown
 }
 
 export function createTaskService(storage: StorageProvider) {
+  const points = createPointsService(storage);
+
   async function requireInstance(id: string): Promise<TaskInstance> {
     const instance = await storage.getInstance(id);
     if (!instance) throw notFound(`task instance ${id} not found`);
@@ -254,10 +258,14 @@ export function createTaskService(storage: StorageProvider) {
       if (instance.status === 'completed') throw conflict(`task instance ${id} is already completed`);
       const by = await validateAssignee(storage, completedBy);
       if (by === null) throw badRequest('completedBy is required and must be an existing user id');
+      // Grant first so the instance can mirror the exact awarded amount and
+      // completion timestamp recorded in the ledger.
+      const grant = await points.recordCompletion(instance, by);
       const updated = await storage.updateInstance(id, {
         status: 'completed',
         completedBy: by,
-        completedAt: nowIso(),
+        completedAt: grant.completedAt,
+        pointsAwarded: grant.points,
       });
       return updated!;
     },
@@ -265,10 +273,14 @@ export function createTaskService(storage: StorageProvider) {
     async reopen(id: string): Promise<TaskInstance> {
       const instance = await requireInstance(id);
       if (instance.status === 'pending') throw conflict(`task instance ${id} is already pending`);
+      // Revoke exactly what the previous completion granted (no-op for
+      // pre-gamification completions, which have no grant to cancel).
+      await points.recordRevocation(instance);
       const updated = await storage.updateInstance(id, {
         status: 'pending',
         completedBy: null,
         completedAt: null,
+        pointsAwarded: null,
       });
       return updated!;
     },

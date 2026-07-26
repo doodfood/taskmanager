@@ -16,6 +16,9 @@ export function recurrenceIntervalWeeks(recurrence: Exclude<Recurrence, 'none'>)
 
 export type TaskStatus = 'pending' | 'completed';
 
+/** Points given to a new task definition when none is supplied on create. */
+export const DEFAULT_POINTS = 10;
+
 export interface User {
   id: string;
   name: string;
@@ -30,8 +33,9 @@ export interface TaskDefinition {
   description: string;
   recurrence: Recurrence;
   /**
-   * Difficulty estimate (0–100, default 1). Copied onto each instance at
-   * hydration time and summed to balance auto-assignment across users.
+   * Difficulty estimate (0–100, default {@link DEFAULT_POINTS}). Copied onto
+   * each instance at hydration time and summed to balance auto-assignment
+   * across users. Doubles as the face value for points scoring on completion.
    */
   points: number;
   /**
@@ -71,8 +75,68 @@ export interface TaskInstance {
   status: TaskStatus;
   completedBy: string | null;
   completedAt: string | null; // ISO timestamp
+  /**
+   * Points actually awarded for the current completion (early/on-time/late
+   * adjustment applied) — a display snapshot so cards can show "+15" without
+   * reading the ledger. null (or absent in pre-existing JSON records) = no
+   * award: pending, or completed before gamification shipped. The points
+   * ledger remains the authoritative record.
+   */
+  pointsAwarded: number | null;
   createdAt: string; // ISO timestamp
 }
+
+// ---------- Points ledger ----------
+
+/** How the completion date compared to the due date, for display. */
+export type PointTiming = 'early' | 'on-time' | 'late';
+
+/**
+ * Append-only record of a completion award: who earned it, on which task
+ * instance, how much, when, and the timing outcome. Snapshotted at
+ * completion time — later definition edits or scoring-rule changes never
+ * rewrite history.
+ */
+export interface PointGrant {
+  id: string;
+  kind: 'grant';
+  /** The completer (instance.completedBy) — who the points belong to. */
+  userId: string;
+  instanceId: string;
+  definitionId: string;
+  /** Task title snapshot, for display after the instance is gone. */
+  title: string;
+  /** The instance's face-value points at completion time. */
+  faceValue: number;
+  /** Awarded points (always >= 1). */
+  points: number;
+  timing: PointTiming;
+  /** Whole calendar days past the due date (0 unless timing === 'late'). */
+  daysLate: number;
+  /** ISO timestamp of the completion (central clock). */
+  completedAt: string;
+}
+
+/**
+ * Append-only record cancelling a grant on reopen: references the exact
+ * grant it voids and names the user the points were taken back from.
+ * A grant plus its revocation cancel out everywhere.
+ */
+export interface PointRevocation {
+  id: string;
+  kind: 'revocation';
+  /** The grant this revocation cancels. */
+  grantId: string;
+  /** Who the points were revoked from (the original completer). */
+  userId: string;
+  instanceId: string;
+  /** Exact amount revoked — mirrors the grant. */
+  points: number;
+  /** ISO timestamp of the reopen (central clock). */
+  reopenedAt: string;
+}
+
+export type PointEvent = PointGrant | PointRevocation;
 
 export class HttpError extends Error {
   constructor(

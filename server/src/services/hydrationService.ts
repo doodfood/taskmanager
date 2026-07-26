@@ -78,6 +78,7 @@ export async function instanceFromDefinition(
     status: 'pending',
     completedBy: null,
     completedAt: null,
+    pointsAwarded: null,
     createdAt: nowIso(),
   };
 }

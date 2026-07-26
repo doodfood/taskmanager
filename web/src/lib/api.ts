@@ -56,7 +56,7 @@ export interface CreateDefinitionInput {
   title: string;
   description?: string;
   recurrence?: Recurrence;
-  /** Difficulty estimate (0–100); defaults to 1 server-side. */
+  /** Difficulty estimate (0–100); defaults to 10 server-side. */
   points?: number;
   /** Users new occurrences may be auto-assigned to (least busy wins); empty = no auto-assignment. */
   autoAssignableTo?: string[];

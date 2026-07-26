@@ -1,18 +1,20 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { TaskDefinition, TaskInstance, User } from '../types.js';
+import type { PointEvent, TaskDefinition, TaskInstance, User } from '../types.js';
 import type { StorageProvider } from './StorageProvider.js';
 
 interface StoreShape {
   users: User[];
   definitions: TaskDefinition[];
   instances: TaskInstance[];
+  pointEvents: PointEvent[];
 }
 
 const FILES = {
   users: 'users.json',
   definitions: 'task-definitions.json',
   instances: 'task-instances.json',
+  pointEvents: 'point-events.json',
 } as const;
 
 /**
@@ -22,7 +24,7 @@ const FILES = {
  * scale; swap for a DB-backed provider when you outgrow it.
  */
 export class JsonFileStorage implements StorageProvider {
-  private readonly data: StoreShape = { users: [], definitions: [], instances: [] };
+  private readonly data: StoreShape = { users: [], definitions: [], instances: [], pointEvents: [] };
   private writeQueue: Promise<void> = Promise.resolve();
 
   private constructor(private readonly dataDir: string) {}
@@ -166,5 +168,17 @@ export class JsonFileStorage implements StorageProvider {
     this.data.instances = [];
     await this.persist('instances');
     return removed;
+  }
+
+  // ---------- Points ledger ----------
+
+  listPointEvents(): Promise<PointEvent[]> {
+    return Promise.resolve([...this.data.pointEvents]);
+  }
+
+  async insertPointEvent(event: PointEvent): Promise<PointEvent> {
+    this.data.pointEvents.push(event);
+    await this.persist('pointEvents');
+    return event;
   }
 }

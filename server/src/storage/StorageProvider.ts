@@ -1,4 +1,4 @@
-import type { TaskDefinition, TaskInstance, User } from '../types.js';
+import type { PointEvent, TaskDefinition, TaskInstance, User } from '../types.js';
 
 /**
  * The DB seam. Every persistence operation goes through this interface, so a
@@ -28,4 +28,8 @@ export interface StorageProvider {
   instanceExists(definitionId: string, occurrenceDate: string): Promise<boolean>;
   /** Removes every instance; returns the number removed. Used by debug/test tooling. */
   clearInstances(): Promise<number>;
+
+  // Points ledger (append-only gamification history)
+  listPointEvents(): Promise<PointEvent[]>;
+  insertPointEvent(event: PointEvent): Promise<PointEvent>;
 }

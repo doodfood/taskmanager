@@ -72,6 +72,7 @@ describe('JsonFileStorage', () => {
       status: 'pending',
       completedBy: null,
       completedAt: null,
+      pointsAwarded: null,
       createdAt: 'x',
     });
     expect(await storage.instanceExists('d1', '2026-07-20')).toBe(true);

@@ -224,3 +224,26 @@ describe('taskService — instances', () => {
     expect(ranged.map((i) => i.title)).toEqual(['B']);
   });
 });
+
+describe('taskService — default points', () => {
+  it('defaults points to 10 when omitted or blank', async () => {
+    ctx = await makeTestContext();
+    const tasks = createTaskService(ctx.storage);
+
+    expect((await tasks.createDefinition({ title: 'Omitted', recurrence: 'none' })).points).toBe(10);
+    expect((await tasks.createDefinition({ title: 'Null', recurrence: 'none', points: null })).points).toBe(10);
+    expect((await tasks.createDefinition({ title: 'Blank', recurrence: 'none', points: '' })).points).toBe(10);
+  });
+
+  it('respects explicit points values, including 0', async () => {
+    ctx = await makeTestContext();
+    const tasks = createTaskService(ctx.storage);
+
+    expect((await tasks.createDefinition({ title: 'Zero', recurrence: 'none', points: 0 })).points).toBe(0);
+    expect((await tasks.createDefinition({ title: 'Heavy', recurrence: 'none', points: 75 })).points).toBe(75);
+    // …and hydrated instances snapshot the same face value.
+    const instances = await ctx.storage.listInstances();
+    expect(instances.find((i) => i.title === 'Zero')?.points).toBe(0);
+    expect(instances.find((i) => i.title === 'Heavy')?.points).toBe(75);
+  });
+});

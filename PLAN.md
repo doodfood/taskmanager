@@ -1,251 +1,255 @@
-# Household Task Manager — Plan
-
-> **Status: backend ✅ complete & tested · frontend ✅ built & verified live**
-> Steps 7–14 done (latest: start dates on definitions, §7.2). What's next is
-> picked from the backlog in §6; the API contract the frontend relies on is
-> documented in §3.
+# Gamification Plan — Points & Leaderboard
 
 ## 1. Overview
 
-A household task manager with two deployable parts:
+Add a scoring layer on top of the existing task manager so that completing
+tasks earns points for the person who completed them, with bonuses for
+finishing early and penalties for finishing late, and a leaderboard page to
+compare everyone's earnings over rolling time windows (1, 2, 4 or 8 weeks).
 
-| Part | Tech | Status |
-|------|------|--------|
-| `server/` | Node.js + Express + TypeScript | ✅ Built, 39/39 tests passing, lint clean, smoke-tested live |
-| `web/` | Next.js 16 (App Router) + TypeScript + Tailwind v4 | ✅ Built, lint clean, verified live with the API |
+Three functional changes:
 
-No authentication. The web app asks "who are you?" once and remembers the choice
-in `localStorage`. Trust-based, household-only.
-
-All persistence is JSON files on disk (`server/data/`), hidden behind a
-storage-provider interface so a real database can be dropped in later without
-touching business logic.
+1. **Default points** — new task definitions default to **10 points** instead of 1.
+2. **Points scoring** — completing / reopening tasks grants and revokes points.
+3. **Leaderboard** — a ranked view of points earned over a selectable period.
 
 ---
 
-## 2. What's built (backend)
+## 2. Scoring Rules
 
-Run with `npm run dev` in `server/` → http://localhost:4000. See `server/README.md`
-for full docs. First run seeds users `Alex, Jordan, Sam` (override with `SEED_USERS` env var).
+Every task instance has a **face value**: its `points` snapshot (copied from
+the definition at hydration time, as today). When a task is completed, the
+**award** actually granted is derived from the face value and how the
+completion date compares to the due date:
 
-- Express API with users / task-definitions / task-instances routers and a
-  consistent `{ "error": "..." }` shape with 400/404/409 statuses.
-- `StorageProvider` interface = the DB seam; `JsonFileStorage` implements it
-  (atomic writes, in-memory cache, write queue). Swap-in point is one line in
-  `server/src/index.ts`.
-- Hydration engine: **TaskDefinition** (recurring template) → **TaskInstance**
-  (concrete occurrence). Idempotent via `(definitionId, occurrenceDate)`
-  uniqueness. One-off tasks hydrate their single instance at creation time.
-- Scheduler: hydration runs at boot + every 60 min (`HYDRATION_INTERVAL_MS`).
-  Horizon: today + 1 day (`HYDRATION_HORIZON_DAYS`).
-- **Spoofable clock** for scenario testing (all time reads go through
-  `server/src/clock.ts`): boot-time via `SPOOF_DATE=2026-08-01`, or runtime via API:
-  - `GET /api/debug/clock` → `{ spoofed, spoofedDate, now, today }`
-  - `POST /api/debug/clock { "date": "2026-07-28" }` → sets clock **and re-runs
-    hydration immediately** (recurring tasks materialise as if time jumped);
-    response adds `hydrated: <count>`. `{"date": null}` or `DELETE` resets to real time.
-  - Date-only strings are anchored to local noon server-side (no TZ off-by-one).
-- Tooling: Vitest + supertest (`npm test`, 31 tests), ESLint 9 flat config
-  (`npm run lint`), `npm run typecheck`.
+| Timing | Award |
+|---|---|
+| Completed **early** (any number of days before the due date) | face value **+ 5** |
+| Completed **on the due date** | face value (unchanged) |
+| Completed **overdue** | face value **− 1 per calendar day late** |
+| Any completion | **minimum of 1 point**, always |
 
-## 3. As-built API contract (for the frontend)
+Notes on the rules:
 
-Base URL `http://localhost:4000/api`, CORS open. Dates: `yyyy-MM-dd` strings for
-occurrence/due dates; full UTC ISO timestamps for `createdAt`/`completedAt`
-(**render these in local time** client-side).
+- The early bonus is a flat +5 — it does not scale with how early the task is
+  finished.
+- The overdue penalty is −1 per whole calendar day past the due date
+  (comparing the completion *date* to the `dueDate`, both as yyyy-MM-dd).
+- The minimum-of-1 floor applies in every case, so even a 0-point task or a
+  hopelessly overdue task still grants 1 point on completion.
 
-### Types
+### Worked examples (10-point task due Sunday)
 
-```ts
-type Recurrence = 'none' | 'weekly-1' | 'weekly-2' | … | 'weekly-13'; // one-off, or every N weeks
+| Completed | Days vs due | Award |
+|---|---|---|
+| Saturday (early) | −1 | 10 + 5 = **15** |
+| Sunday (due date) | 0 | **10** |
+| Monday | +1 | 10 − 1 = **9** |
+| Wednesday | +3 | 10 − 3 = **7** |
+| Friday | +5 | 10 − 5 = **5** |
+| Two weeks later | +14 | floor → **1** |
 
-interface User { id: string; name: string; color: string; createdAt: string }
+### Who earns the points
 
-interface TaskDefinition {
-  id: string; title: string; description: string;
-  recurrence: Recurrence;
-  points: number;                 // difficulty 0–100 (default 1); balances auto-assignment
-  autoAssignableTo: string[];     // user ids new occurrences may be auto-assigned to (fewest
-                                  // outstanding points as at the occurrence date wins, ties broken
-                                  // at random among the tied); empty = "anyone"
-  dueOffsetDays: number;          // due N days after each occurrence
-  startDate: string | null;       // yyyy-MM-dd first occurrence; null = anchor on creation date
-  active: boolean;
-  lastHydratedDate: string | null;
-  createdAt: string;
-}
-
-interface TaskInstance {
-  id: string; definitionId: string;
-  title: string; description: string;       // snapshot of the definition at hydration time
-  assigneeId: string | null;                // null = anyone
-  points: number;                           // difficulty snapshot from the definition
-  occurrenceDate: string;                   // yyyy-MM-dd
-  dueDate: string;                          // yyyy-MM-dd = occurrence + offset
-  status: 'pending' | 'completed';
-  completedBy: string | null; completedAt: string | null;
-  createdAt: string;
-}
-```
-
-### Endpoints
-
-| Method | Path | Body / query | Notes |
-|--------|------|--------------|-------|
-| GET | `/health` | — | `{ ok, uptime }` |
-| GET | `/users` | — | List users |
-| POST | `/users` | `{ name, color? }` | Colour auto-assigned from a palette if omitted |
-| DELETE | `/users/:id` | — | 204 |
-| GET | `/task-definitions` | — | List templates |
-| POST | `/task-definitions` | `{ title, description?, recurrence?, points?, autoAssignableTo?, dueOffsetDays?, startDate? }` | Defaults: `recurrence=none`, `points=1`, `autoAssignableTo=[]` (anyone), `dueOffsetDays=0`, `startDate=null` (creation date). One-offs hydrate instantly (on `startDate ?? today`); recurring hydrates first occurrence(s) immediately unless `startDate` is in the future |
-| PATCH | `/task-definitions/:id` | partial fields + `active?` | Edit / deactivate |
-| DELETE | `/task-definitions/:id` | — | Deletes template + its **pending** instances; completed stay as history |
-| GET | `/task-instances` | `status=`, `assigneeId=` (`null` string = anyone), `from=`, `to=` (dueDate range), `includeAnyone=true` | Sorted by dueDate then title |
-| GET | `/task-instances/upcoming` | `userId` (required), `days` (1–90, default 7) | **The dashboard endpoint**: pending tasks assigned to user OR anyone, `dueDate <= today + days`, **overdue included** |
-| POST | `/task-instances/:id/complete` | `{ completedBy: userId }` | 409 if already completed |
-| POST | `/task-instances/:id/reopen` | — | Back to pending |
-| POST | `/task-instances/:id/reassign` | `{ assigneeId: userId \| null }` | null = anyone |
-| GET/POST/DELETE | `/debug/clock` | see §2 | Date spoofing for scenario testing |
-
-Gotchas for the UI:
-- `upcoming` includes **overdue** pending tasks (dueDate < today) — style them.
-- `startDate` anchors a recurring series' first occurrence (for one-offs it's
-  the single instance's date). Once hydration has begun, the `lastHydratedDate`
-  watermark drives the series — PATCHing `startDate` does not move
-  already-hydrated instances (same snapshot semantics as other edits).
-  Pre-startDate JSON records simply lack the field and anchor on `createdAt`.
-- Completing an "anyone" task records `completedBy` — show who did it.
-- Editing a definition does **not** rewrite already-hydrated instances
-  (title/description/assignee are snapshots). Intended behaviour.
-- Deleting a user does **not** cascade their `assigneeId` — instances can point
-  at a non-existent user. Handle unknown user ids gracefully (see §6 backlog).
-
-## 4. Frontend spec (steps 7–12)
-
-Scaffold `web/` with create-next-app (App Router, TS, Tailwind, ESLint).
-Point it at the API with `NEXT_PUBLIC_API_URL=http://localhost:4000/api` in
-`web/.env.local`. Wrap all fetches in `src/lib/api.ts` (typed, throws on
-`{ error }` responses). All pages are client components talking to the API
-directly — no SSR/data-fetching-on-server needed (keeps date spoofing simple).
-
-### Pages & components
-
-- **`/` dashboard** — header: current user chip + "switch" link, "New task"
-  button, spoofed-date banner when clock is spoofed. Body: next-7-days list
-  from `GET /task-instances/upcoming?userId=<me>&days=7`, grouped by dueDate
-  (labels: Overdue / Today / Tomorrow / weekday+date). Each `TaskCard`: title,
-  description, due date, assignee badge (user name+colour, or "Anyone"),
-  Complete button, reassign `<select>` (users + "Anyone"), reopen for completed.
-- **`/tasks/new`** — `TaskForm`: title, description, recurrence select
-  (one-off, weekly, every 2 weeks … every 13 weeks), assignee select (users + "Anyone"),
-  due offset (number input "due N days after"), submit → POST
-  `/task-definitions` → redirect to dashboard.
-- **`/users`** — `UserPicker` tiles (colour avatar + name); pick → save to
-  localStorage → redirect to `/`. Also add/remove users here.
-- **`src/context/UserContext.tsx`** — holds current user; on first visit (no
-  stored user) redirect to `/users` picker. Validate stored id still exists
-  against `GET /users` (it may have been deleted).
-- **`src/components/ClockSpoofer.tsx`** (dev tool) — read `GET /debug/clock`;
-  date input + "jump" / "reset" buttons hitting the POST/DELETE endpoints;
-  refresh dashboard data afterwards. This is how scenarios get tested.
-- Completed state: strike-through + "done by X at HH:mm" (local time).
-
-### Frontend build steps
-
-| # | Step | Done when |
-|---|------|-----------|
-| 7 ✅ | Scaffold `web/` (create-next-app) + `lib/api.ts` + `.env.local` | App renders, health check to API works |
-| 8 ✅ | `UserContext` + `/users` picker with localStorage | Identity persists across reloads; first visit forces picker |
-| 9 ✅ | Dashboard week view (grouped, overdue styling) | Sees own + anyone tasks for next 7 days |
-| 10 ✅ | `/tasks/new` form | Can create one-off + recurring, specific/anyone, offset |
-| 11 ✅ | Complete / reopen / reassign on `TaskCard` | Full lifecycle in UI |
-| 12 ✅ | `ClockSpoofer` + E2E smoke: seed data → spoof forward a week → verify recurrence & overdue rendering | Both apps verified together; root README written |
-| 13 ✅ | Definitions manager: view/edit/deactivate/delete templates | See §7.1 |
-| 14 ✅ | Start date on definitions (backend + form field) | See §7.2 |
-
-## 5. Decisions & conventions (as built)
-
-- IDs: `crypto.randomUUID()`. Date math: `date-fns` on the server; dates stored
-  as `yyyy-MM-dd` strings (compare lexicographically), timestamps as UTC ISO.
-- Server is ESM (`"type": "module"`), NodeNext resolution, relative imports use
-  `.js` extensions. Tests: Vitest, temp-dir JSON storage per test, spoofed clock
-  reset in `afterEach`.
-- The machine ran **Node v18.13** when the backend was built (eslint 9 warned
-  but ran). Upgraded to **Node 24** before scaffolding the web app — Next.js 16
-  requires a modern Node, so this was a hard prerequisite.
-
-## 6. Future backlog (noticed during backend build — not yet scheduled)
-
-- **Auth**: currently trust-based user picker; no sessions/permissions at all.
-- **DB provider**: implement `StorageProvider` for Postgres/SQLite when JSON
-  files outgrow household scale (composition root: `server/src/index.ts`).
-- **User deletion cascade**: reassign or null-out `assigneeId`/`completedBy`
-  when a user is deleted (API currently leaves orphans).
-- **Instance editing**: no PATCH on single occurrences (e.g. rename just this
-  one, move a due date). Definition edits only affect future hydrations.
-- **More recurrences**: yearly, "every N days", specific weekday
-  rules (e.g. "bins every Tuesday").
-- **History/stats view**: completed instances per user, streaks for recurring
-  tasks, "who did what this month".
-- **Notifications**: overdue nudges (email/push/Telegram), daily digest of
-  today's tasks.
-- **PWA**: installable on phones, offline tolerance, quick-complete from home screen.
-- **Shared types package**: avoid drift between `server/src/types.ts` and
-  `web/src/lib/types.ts` (currently mirrored by hand). ~~Root tooling~~ done:
-  root `package.json` with `concurrently` boots server+web together.
-- **Rate of hydration**: scheduler is interval-based; could become cron-based
-  (e.g. node-cron at 00:05) once exact semantics matter.
+Points go to the **completer** — the user recorded as `completedBy` on the
+instance (which is who the complete API already requires). In the normal flow
+that is the assignee; for "anyone" tasks it is whoever actually does the task.
+This is what makes the reopen → reassign → re-complete flow attribute points
+correctly (see §3).
 
 ---
 
-## 7. Next steps (planned)
+## 3. Points Lifecycle (complete / reopen / re-complete)
 
-### 13. Definitions manager — `/tasks` page (frontend only)
+Scoring follows the existing task lifecycle endpoints:
 
-**Problem:** once a recurring template exists ("water plants weekly") there is
-no UI to view or edit it — the dashboard only shows hydrated instances, and
-editing a definition's properties (title, recurrence, assignee, offset) means
-hand-crafting API calls.
+- **Complete** (`POST /task-instances/:id/complete`)
+  The award is calculated once, at completion time, using the central clock
+  (so date spoofing for testing keeps working), and granted to the completer.
+  The granted amount is **snapshotted** — later edits to the definition or
+  rule changes never rewrite history.
 
-The API is already complete for this (`GET/PATCH/DELETE /task-definitions`), so
-it's purely frontend work:
+- **Reopen** (`POST /task-instances/:id/reopen`)
+  The points from the previous completion are **revoked from the user who
+  completed it** — exactly the amount they were granted, even if they are no
+  longer the assignee. After a reopen, that completion contributes **zero**
+  points in every leaderboard window, as if it never happened.
 
-- New page `web/src/app/tasks/page.tsx`: table of **all** definitions —
-  title, recurrence, assignee (badge), due offset, active state,
-  `lastHydratedDate`. Dashboard header gains a "Manage tasks" link.
-- Row actions: **edit** (inline expandable form reusing the `TaskForm` fields →
-  `PATCH /task-definitions/:id`), **deactivate/reactivate** (`active` toggle),
-  **delete** (confirm; pending instances are removed, completed stay as history).
-- Extract the form fields from `/tasks/new` into a shared `TaskForm` component
-  used by both create and edit.
-- Surface the snapshot caveat in the UI: edits apply to **future hydrations
-  only** — already-hydrated instances keep their snapshotted
-  title/description/assignee (§3 gotchas).
+- **Re-complete after reopen** (same or different person)
+  Treated as a brand-new completion: a fresh award is calculated from the
+  *new* completion date and granted to the *new* completer. Because the award
+  is recalculated, a task that was on-time when first completed may be worth
+  less if it is now overdue — and vice versa it can never be worth more than
+  the rules allow.
 
-### 14. Start date on definitions (backend + frontend)
+### The key scenario this supports
 
-**Problem:** occurrences are always anchored on the creation date. "Recurs
-every 3 months, first instance 1 month from now" is currently impossible —
-recurring tasks anchor on `createdAt` and one-offs hydrate for `today`.
+1. Alice completes a 10-point task on time → **Alice +10**.
+2. The task is reopened → **Alice −10** (net 0 for that completion).
+3. The task is reassigned to Bob.
+4. Bob completes it, now 2 days overdue → **Bob +8**.
 
-Backend:
-- `TaskDefinition` gains `startDate: string | null` (yyyy-MM-dd; null/absent =
-  anchor on creation date — back-compatible with existing JSON files).
-- `POST /task-definitions` accepts optional `startDate`; validate `yyyy-MM-dd`.
-- `hydrateDefinition` (`server/src/services/hydrationService.ts`) anchors the
-  cursor on `startDate ?? localDate(createdAt)` instead of always
-  `localDate(createdAt)`. A future startDate naturally hydrates nothing until
-  the horizon catches up — no special-casing needed.
-- One-off tasks (`server/src/services/taskService.ts`): the single instance is
-  created with `occurrenceDate = startDate ?? today` instead of always today.
-- `PATCH` accepts `startDate` too. Document the caveat: after hydration has
-  begun, the `lastHydratedDate` watermark drives the series, so changing
-  `startDate` does not move already-hydrated instances (same snapshot
-  semantics as other edits).
-- Tests: one-off with a future date; weekly anchored to startDate; 13-weekly
-  starting next month; spoofed clock crossing the startDate; back-compat with
-  definitions lacking the field.
+Final standing: Alice 0, Bob 8 — points always track the completion that
+actually "stuck".
 
-Frontend:
-- `TaskForm` gains a "First occurrence on" date input (defaults to today).
-- Definitions manager (step 13) displays the start date.
+---
+
+## 4. Default Points: 1 → 10
+
+- The server-side default for a definition's `points` (when the field is
+  omitted/blank on create) changes from 1 to **10**.
+- The new-task form pre-fills **10** to match.
+- **Existing data is untouched**: definitions and hydrated instances keep
+  their current point values. The new default only applies to newly created
+  definitions where no value is given.
+
+The `points` field keeps its existing dual role as the difficulty weighting
+used by auto-assignment balancing — that behaviour is unchanged; only the
+default and the new "earned points" meaning are added on top.
+
+---
+
+## 5. Points Ledger (how scores are remembered)
+
+Scores are stored as an append-only **points ledger** rather than being
+recomputed from task state:
+
+- A **grant entry** is recorded on every completion: who, which task
+  instance, how many points, when, and the timing outcome
+  (early / on-time / days-late) for display purposes.
+- A **revocation entry** is recorded on every reopen, linked to the grant it
+  cancels and naming the user it was taken back from.
+
+Why a ledger instead of deriving from instances:
+
+- **Exact reversals** — a revocation cancels the precise amount originally
+  granted, even if scoring rules or the task's points change later.
+- **History survives reopen** — reopening an instance wipes its
+  `completedBy`/`completedAt`, but the leaderboard still needs to know the
+  completion happened so it can exclude it correctly.
+- **Time windows** — the leaderboard filters by when points were earned,
+  which the ledger records directly.
+
+Functionally: **grant + its revocation cancel out everywhere** — in every
+time window and every total.
+
+The ledger lives in its own JSON data file behind the existing
+`StorageProvider` seam, consistent with the current architecture.
+
+### Pre-gamification history
+
+Tasks completed before this feature ships have no ledger entries and earn
+nothing retroactively — leaderboards start from go-live. No backfill.
+
+---
+
+## 6. Leaderboard
+
+A new page showing who has earned the most points over a rolling period.
+
+### Behaviour
+
+- **Time filters:** tabs for **1, 2, 4 and 8 weeks**. The window is "the last
+  N weeks" measured back from today (via the central clock, so spoofed dates
+  work for demos/tests).
+- **Ranking:** users sorted by net points earned within the window,
+  descending. Ties broken alphabetically by name (stable, predictable).
+- **Every registered user appears**, even with 0 points in the window — it's
+  a leaderboard, not just a winners list.
+- **Per-user row shows:** rank, the user's colour chip and name, number of
+  tasks completed in the window, and net points earned. The top 3 get
+  medal-style visual treatment (🥇🥈🥉).
+- **Reopened completions count for nothing** — they contribute neither
+  points nor to the "tasks completed" tally, in any window.
+- The **currently signed-in user** is visually highlighted so you can find
+  yourself at a glance.
+
+### API
+
+One new endpoint:
+
+- `GET /api/leaderboard?weeks=1|2|4|8` → ranked list of
+  `{ user, totalPoints, tasksCompleted, rank }`.
+
+Anything outside 1/2/4/8 is rejected as a bad request.
+
+### UI
+
+- New route **`/leaderboard`** with the filter tabs and ranked table, plus a
+  navigation link from the existing pages so it's reachable from anywhere.
+- Small supporting touches elsewhere:
+  - Completed task cards show the **points earned** (e.g. "+15") instead of
+    just the face value.
+  - The new-task form defaults to 10 points (§4).
+
+---
+
+## 7. Summary of Changes by Layer
+
+**Server**
+
+- `types` — new `PointEvent` (ledger entry) type; default-points constant.
+- Scoring logic — one pure function: `(faceValue, dueDate, completionDate) → award`,
+  easy to unit-test exhaustively.
+- `taskService` — `complete()` also writes a grant entry; `reopen()` writes a
+  revocation entry against the original grant.
+- New leaderboard service — sums ledger entries within the requested window,
+  excluding revoked grants, joined with users and ranked.
+- `StorageProvider` + JSON storage — persist and read the ledger file.
+- Routes — mount `GET /api/leaderboard`.
+- Validation — default points 10 when omitted.
+
+**Web**
+
+- `types.ts` mirror — ledger/leaderboard response types; default-points
+  comment update.
+- `api.ts` — leaderboard fetch function.
+- New `/leaderboard` page with 1/2/4/8-week tabs, ranked table, medals,
+  current-user highlight; nav link added to existing pages.
+- `TaskForm` — points field defaults to 10.
+- `TaskCard` — show earned points on completed tasks.
+
+---
+
+## 8. Edge Cases & Decisions
+
+| Case | Decision |
+|---|---|
+| Task completed by someone other than the assignee | Completer (`completedBy`) earns the points |
+| "Anyone" task completed | Whoever completes it earns the points |
+| 0-point task completed | Grants the 1-point minimum |
+| Very overdue task | Award floors at 1, never 0 or negative |
+| Completed early by many days | Flat +5, regardless of how early |
+| Reopen then never re-complete | Original grant stays revoked; nobody has those points |
+| Reopen → re-complete by same person | Fresh award from the new completion date |
+| Task edited after completion | No effect — the granted amount was snapshotted |
+| Definition deleted | Completed instances (and their grants) remain as history, as today |
+| User deleted | They drop off the leaderboard; their ledger history is harmless |
+| Pre-existing completions (pre-feature) | No retroactive points; leaderboard starts clean |
+| `weeks` param other than 1/2/4/8 | 400 bad request |
+| Scores within a window | Never negative in practice: only valid (un-revoked) grants in the window are counted |
+
+---
+
+## 9. Testing Strategy
+
+- **Scoring unit tests** — the pure award function: early (several offsets),
+  on-time, 1-day-late, many-days-late, floor-at-1, 0-point task, early bonus
+  independence from face value.
+- **Lifecycle tests** — complete grants; reopen revokes the right user and
+  amount; reopen→reassign→complete attributes to the new completer; reopen→
+  re-complete recomputes from the new date (uses clock spoofing).
+- **Leaderboard tests** — window boundaries (an entry at exactly N weeks is
+  in/out as specified), revoked grants excluded from points and counts,
+  ranking order, zero-point users included, invalid `weeks` rejected.
+- **Default points** — definition created without points gets 10; explicit
+  values (including 0) are respected.
+
+## 10. Rollout Order
+
+1. [x] Scoring function + unit tests (pure logic, no wiring)
+2. [x] Points ledger: storage, grant on complete, revoke on reopen + tests
+3. [x] Default points 10 (server validation + task form)
+4. [ ] Leaderboard endpoint + tests
+5. [ ] Leaderboard page (filters, ranking, medals, current-user highlight) + nav link
+6. [x] TaskCard earned-points display polish

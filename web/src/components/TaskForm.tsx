@@ -3,7 +3,7 @@
 import { useId, useState, type FormEvent, type ReactNode } from 'react';
 import { useUser } from '@/context/UserContext';
 import { toDateStr } from '@/lib/dates';
-import { RECURRENCES, recurrenceLabel, type Recurrence, type TaskDefinition } from '@/lib/types';
+import { DEFAULT_POINTS, RECURRENCES, recurrenceLabel, type Recurrence, type TaskDefinition } from '@/lib/types';
 
 const RECURRENCE_OPTIONS: { value: Recurrence; label: string }[] = RECURRENCES.map((value) => ({
   value,
@@ -44,7 +44,7 @@ export function TaskForm({ initial, submitLabel, busyLabel, onSubmit, onCancel, 
   const [title, setTitle] = useState(initial?.title ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [recurrence, setRecurrence] = useState<Recurrence>(initial?.recurrence ?? 'none');
-  const [points, setPoints] = useState(initial?.points ?? 1);
+  const [points, setPoints] = useState(initial?.points ?? DEFAULT_POINTS);
   const [autoAssignableTo, setAutoAssignableTo] = useState<string[]>(initial?.autoAssignableTo ?? []);
   const [dueOffsetDays, setDueOffsetDays] = useState(initial?.dueOffsetDays ?? 0);
   const [startDate, setStartDate] = useState(initial?.startDate ?? toDateStr(new Date()));

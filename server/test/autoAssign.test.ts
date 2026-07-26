@@ -236,11 +236,11 @@ describe('auto-assignment', () => {
 });
 
 describe('points and autoAssignableTo validation', () => {
-  it('defaults points to 1 and autoAssignableTo to empty', async () => {
+  it('defaults points to 10 and autoAssignableTo to empty', async () => {
     ctx = await makeTestContext('2026-07-20');
     const tasks = createTaskService(ctx.storage);
     const def = await tasks.createDefinition({ title: 'Plain', recurrence: 'none' });
-    expect(def.points).toBe(1);
+    expect(def.points).toBe(10);
     expect(def.autoAssignableTo).toEqual([]);
   });
 
