@@ -99,7 +99,7 @@ export default function ManageTasksPage() {
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-6">
       <Link href="/" className="text-sm text-neutral-500 underline underline-offset-2 hover:text-neutral-800">
-        ← Back to dashboard
+        ← Back to overview
       </Link>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold">Manage tasks</h1>

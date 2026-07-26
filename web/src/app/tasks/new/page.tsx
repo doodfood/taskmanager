@@ -34,7 +34,7 @@ export default function NewTaskPage() {
   return (
     <main className="mx-auto w-full max-w-2xl px-4 py-6">
       <Link href="/" className="text-sm text-neutral-500 underline underline-offset-2 hover:text-neutral-800">
-        ← Back to dashboard
+        ← Back to overview
       </Link>
       <h1 className="mt-2 text-xl font-bold">New task</h1>
 

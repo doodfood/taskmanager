@@ -6,82 +6,170 @@ import { ClockSpoofer } from '@/components/ClockSpoofer';
 import { HydrationReset } from '@/components/HydrationReset';
 import { TaskCard } from '@/components/TaskCard';
 import { useUser } from '@/context/UserContext';
-import { getClock, listInstances, upcoming } from '@/lib/api';
-import { addDaysStr, formatDateShort } from '@/lib/dates';
+import { getClock, listInstances } from '@/lib/api';
+import { formatDateShort } from '@/lib/dates';
 import type { ClockState, TaskInstance } from '@/lib/types';
 
-interface Group {
-  key: string;
-  label: string;
-  overdue: boolean;
-  items: TaskInstance[];
+/** Assignee-group keys that can't collide with a user UUID. */
+const ANYONE = '__anyone__';
+
+/**
+ * How often the board silently re-fetches, so an always-on tablet picks up
+ * freshly hydrated tasks and edits made on other devices without a manual
+ * reload.
+ */
+const AUTO_REFRESH_MS = 5 * 60 * 1000;
+
+/** localStorage key for the per-device filter-chip selection. */
+const FILTER_STORAGE_KEY = 'tm.overviewFilters';
+
+/**
+ * Read the persisted chip selection. Runs as a lazy useState initializer, so
+ * it must tolerate SSR (no window) and corrupt or legacy values. Stale ids
+ * (e.g. a since-deleted user) are kept — they still match that user's
+ * "Unknown" group of orphaned tasks.
+ */
+function readStoredFilters(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(FILTER_STORAGE_KEY);
+    if (raw === null) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
-export default function DashboardPage() {
-  const { me, loading: userLoading, switchUser } = useUser();
+interface UserGroup {
+  key: string;
+  name: string;
+  /** null → grey dot (Anyone / Unknown). */
+  color: string | null;
+  /** occurrenceDate ≤ today — the occurrence day has arrived, so act now. */
+  now: TaskInstance[];
+  /** occurrenceDate > today — future occurrences hydration already materialised. */
+  upcoming: TaskInstance[];
+  overdueCount: number;
+}
+
+/**
+ * Home page: the household-wide board. Every pending instance (no assignee
+ * filter, completed tasks excluded), grouped by person so each family member
+ * can spot — and complete — their upcoming tasks.
+ */
+export default function OverviewPage() {
+  const { me, users, loading: userLoading, switchUser } = useUser();
   const [clock, setClock] = useState<ClockState | null>(null);
   const [pending, setPending] = useState<TaskInstance[]>([]);
-  const [completed, setCompleted] = useState<TaskInstance[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Selected filter-chip user ids; empty = show the whole household.
+   * Persisted per device, so a family member's phone can default to their own
+   * tasks while the shared tablet (nothing selected) shows everyone.
+   */
+  const [filterIds, setFilterIds] = useState<string[]>(readStoredFilters);
+
+  const toggleFilter = (id: string) =>
+    setFilterIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   const load = useCallback(async () => {
-    if (!me) return;
     try {
-      // The server's (possibly spoofed) "today" is the reference for grouping,
-      // so ClockSpoofer scenarios render exactly as the server sees them.
-      const clk = await getClock();
-      const [mine, done] = await Promise.all([
-        upcoming(me.id, 7),
-        listInstances({ status: 'completed', from: addDaysStr(clk.today, -7), to: addDaysStr(clk.today, 7) }),
-      ]);
+      // No dueDate window: hydration only materialises occurrences up to the
+      // server horizon, so the pending set is inherently bounded — and no
+      // materialised task can hide here while showing on a dashboard (a
+      // dueDate-based window did exactly that once dueOffsetDays pushed the
+      // due date past it).
+      const [clk, items] = await Promise.all([getClock(), listInstances({ status: 'pending' })]);
       setClock(clk);
-      setPending(mine);
-      setCompleted(done);
+      setPending(items);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load tasks');
     } finally {
       setLoading(false);
     }
-  }, [me]);
+  }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data fetch; state updates happen after awaits
     void load();
   }, [load]);
 
-  const groups = useMemo<Group[]>(() => {
+  useEffect(() => {
+    // Background poll: `load` only swaps state (no navigation / full reload),
+    // and `loading` stays false after the first fetch, so the list updates in
+    // place without flashing a spinner or losing the scroll position.
+    const id = setInterval(() => void load(), AUTO_REFRESH_MS);
+    return () => clearInterval(id);
+  }, [load]);
+
+  useEffect(() => {
+    // Persist the chip selection on this device whenever it changes.
+    try {
+      window.localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filterIds));
+    } catch {
+      // Storage unavailable (private mode, quota) — filtering still works for the session.
+    }
+  }, [filterIds]);
+
+  const groups = useMemo<UserGroup[]>(() => {
     if (!clock) return [];
     const ref = clock.today;
-    const tomorrow = addDaysStr(ref, 1);
-    const byKey = new Map<string, TaskInstance[]>();
-    for (const t of [...pending, ...completed]) {
-      const key = t.dueDate < ref ? 'overdue' : t.dueDate;
-      const list = byKey.get(key);
+    const byAssignee = new Map<string, TaskInstance[]>();
+    for (const t of pending) {
+      const key = t.assigneeId ?? ANYONE;
+      const list = byAssignee.get(key);
       if (list) list.push(t);
-      else byKey.set(key, [t]);
+      else byAssignee.set(key, [t]);
     }
-    return [...byKey.keys()]
-      .sort((a, b) => (a === 'overdue' ? -1 : b === 'overdue' ? 1 : a < b ? -1 : 1))
-      .map((key) => ({
+
+    // Ordered by occurrence date: the day an occurrence is *for* determines
+    // both its position in the list and whether it's actionable yet.
+    const byOccurrenceThenTitle = (a: TaskInstance, b: TaskInstance) =>
+      a.occurrenceDate === b.occurrenceDate
+        ? a.title.localeCompare(b.title)
+        : a.occurrenceDate < b.occurrenceDate
+          ? -1
+          : 1;
+    const make = (key: string, name: string, color: string | null, items: TaskInstance[]): UserGroup => {
+      const sorted = [...items].sort(byOccurrenceThenTitle);
+      return {
         key,
-        overdue: key === 'overdue',
-        label:
-          key === 'overdue'
-            ? 'Overdue'
-            : key === ref
-              ? 'Today'
-              : key === tomorrow
-                ? 'Tomorrow'
-                : formatDateShort(key),
-        items: byKey
-          .get(key)!
-          .sort((a, b) =>
-            a.status === b.status ? a.title.localeCompare(b.title) : a.status === 'pending' ? -1 : 1,
-          ),
-      }));
-  }, [pending, completed, clock]);
+        name,
+        color,
+        now: sorted.filter((t) => t.occurrenceDate <= ref),
+        upcoming: sorted.filter((t) => t.occurrenceDate > ref),
+        overdueCount: items.filter((t) => t.dueDate < ref).length,
+      };
+    };
+
+    const result: UserGroup[] = [];
+    const anyoneItems = byAssignee.get(ANYONE) ?? [];
+    byAssignee.delete(ANYONE);
+    // Every household member, even with an empty list, so each person can see
+    // at a glance that they have nothing due.
+    for (const u of users) {
+      result.push(make(u.id, u.name, u.color, byAssignee.get(u.id) ?? []));
+      byAssignee.delete(u.id);
+    }
+    // Surface tasks whose assignee was deleted rather than dropping them.
+    for (const [key, items] of byAssignee) {
+      result.push(make(key, 'Unknown', null, items));
+    }
+    // The communal pool last — it's usually empty, so household members get
+    // top billing. Still always rendered, even when empty, so unassigned
+    // tasks remain claimable from the board.
+    result.push(make(ANYONE, 'Anyone', null, anyoneItems));
+    return result;
+  }, [pending, users, clock]);
+
+  // Chip filter: with nothing selected the full board shows (members, then
+  // Unknown, then Anyone); selecting chips narrows it to those members only.
+  // A selected chip survives its user being deleted — the id then matches the
+  // "Unknown" group holding their orphaned tasks.
+  const visibleGroups = filterIds.length === 0 ? groups : groups.filter((g) => filterIds.includes(g.key));
 
   if (userLoading || !me) {
     // No identity yet — UserContext is redirecting to /users.
@@ -95,12 +183,8 @@ export default function DashboardPage() {
   return (
     <main className="mx-auto w-full max-w-2xl px-4 py-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-bold">Household Tasks</h1>
+        <h1 className="text-xl font-bold">Household overview</h1>
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-sm">
-            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: me.color }} />
-            {me.name}
-          </span>
           <button
             type="button"
             onClick={switchUser}
@@ -108,12 +192,6 @@ export default function DashboardPage() {
           >
             switch
           </button>
-          <Link
-            href="/overview"
-            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-100"
-          >
-            Overview
-          </Link>
           <Link
             href="/tasks"
             className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-100"
@@ -128,6 +206,30 @@ export default function DashboardPage() {
           </Link>
         </div>
       </header>
+      {/* Filter chips — none selected = whole household; tap names to narrow
+          the board to one or more members. */}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {users.map((u) => {
+          const active = filterIds.includes(u.id);
+          return (
+            <button
+              key={u.id}
+              type="button"
+              aria-pressed={active}
+              onClick={() => toggleFilter(u.id)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm transition-colors ${
+                active
+                  ? 'font-medium'
+                  : 'border-neutral-200 bg-white text-neutral-600 hover:border-neutral-400'
+              }`}
+              style={active ? { borderColor: u.color, backgroundColor: `${u.color}1a` } : undefined}
+            >
+              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: u.color }} />
+              {u.name}
+            </button>
+          );
+        })}
+      </div>
 
       {clock?.spoofed && (
         <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -152,22 +254,26 @@ export default function DashboardPage() {
       <div className="mt-6 space-y-6">
         {loading ? (
           <p className="text-neutral-500">Loading tasks…</p>
-        ) : groups.length === 0 ? (
-          <p className="rounded-lg border border-neutral-200 bg-white p-6 text-center text-neutral-500">
-            Nothing due in the next 7 days. 🎉
-          </p>
         ) : (
-          groups.map((g) => (
+          visibleGroups.map((g) => (
             <section key={g.key}>
-              <h2 className={`text-sm font-semibold ${g.overdue ? 'text-red-600' : 'text-neutral-700'}`}>
-                {g.label}
-                <span className="ml-2 font-normal text-neutral-400">{g.items.length}</span>
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-neutral-700">
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: g.color ?? '#a3a3a3' }}
+                />
+                {g.name}
+                <span className="font-normal text-neutral-400">{g.now.length + g.upcoming.length}</span>
+                {g.overdueCount > 0 && <span className="font-semibold text-red-600">{g.overdueCount} overdue</span>}
               </h2>
-              <ul className="mt-2 space-y-2">
-                {g.items.map((t) => (
-                  <TaskCard key={t.id} instance={t} overdue={g.overdue} onChanged={() => void load()} />
-                ))}
-              </ul>
+              {g.now.length + g.upcoming.length === 0 ? (
+                <p className="mt-2 text-sm text-neutral-400">Nothing due 🎉</p>
+              ) : (
+                <>
+                  <GroupList label="Do it now" items={g.now} clock={clock} onChanged={() => void load()} />
+                  <GroupList label="Upcoming" items={g.upcoming} clock={clock} onChanged={() => void load()} />
+                </>
+              )}
             </section>
           ))
         )}
@@ -176,5 +282,33 @@ export default function DashboardPage() {
       <ClockSpoofer clock={clock} onChanged={() => void load()} />
       <HydrationReset onChanged={() => void load()} />
     </main>
+  );
+}
+
+/** One labelled sub-list ("Do it now" / "Upcoming") within a person's group. Hidden when empty. */
+function GroupList({
+  label,
+  items,
+  clock,
+  onChanged,
+}: {
+  label: string;
+  items: TaskInstance[];
+  clock: ClockState | null;
+  onChanged: () => void;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div className="mt-3">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+        {label}
+        <span className="ml-1.5 font-normal normal-case text-neutral-400">{items.length}</span>
+      </h3>
+      <ul className="mt-2 space-y-2">
+        {items.map((t) => (
+          <TaskCard key={t.id} instance={t} overdue={clock !== null && t.dueDate < clock.today} onChanged={onChanged} />
+        ))}
+      </ul>
+    </div>
   );
 }
