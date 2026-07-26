@@ -161,12 +161,12 @@ describe('hydration', () => {
       title: 'Legacy weekly',
       description: '',
       recurrence: 'weekly-1',
-      assigneeId: null,
+      assigneeId: null, // retired field — present in old records, ignored now
       dueOffsetDays: 0,
       active: true,
       lastHydratedDate: null,
       createdAt: '2026-07-06T09:00:00.000Z',
-    } as TaskDefinition;
+    } as unknown as TaskDefinition;
     await ctx.storage.insertDefinition(legacy);
 
     const result = await hydrateAll(ctx.storage, 1);

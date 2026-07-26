@@ -15,7 +15,6 @@ export default function NewTaskPage() {
       title: values.title,
       description: values.description || undefined,
       recurrence: values.recurrence,
-      assigneeId: values.assigneeId,
       points: values.points,
       autoAssignableTo: values.autoAssignableTo,
       dueOffsetDays: values.dueOffsetDays,

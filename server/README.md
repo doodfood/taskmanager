@@ -41,7 +41,7 @@ Base: `http://localhost:4000/api`
 | GET | `/health` | Liveness |
 | GET / POST | `/users` | List / create `{ name, color? }` |
 | DELETE | `/users/:id` | Remove user |
-| GET / POST | `/task-definitions` | List / create `{ title, description?, recurrence, assigneeId?, points?, autoAssignableTo?, dueOffsetDays?, startDate? }` |
+| GET / POST | `/task-definitions` | List / create `{ title, description?, recurrence, points?, autoAssignableTo?, dueOffsetDays?, startDate? }` |
 | PATCH / DELETE | `/task-definitions/:id` | Edit/deactivate / delete (pending instances go too, completed stay) |
 | GET | `/task-instances?status=&assigneeId=&from=&to=&includeAnyone=` | List instances (`assigneeId=null` for anyone-tasks) |
 | GET | `/task-instances/upcoming?userId=&days=7` | "My week": pending, mine + anyone, overdue included |

@@ -40,11 +40,11 @@ describe('API', () => {
   it('full task lifecycle over HTTP: create → list → complete → reopen → reassign', async () => {
     ctx = await makeTestContext('2026-07-20');
     const app = buildApp(ctx.storage);
-    const [alice, bob] = ctx.users;
+    const [, bob] = ctx.users;
 
     const def = await request(app)
       .post('/api/task-definitions')
-      .send({ title: 'Mow lawn', recurrence: 'none', assigneeId: alice.id, dueOffsetDays: 2 });
+      .send({ title: 'Mow lawn', recurrence: 'none', dueOffsetDays: 2 });
     expect(def.status).toBe(201);
 
     const instances = await request(app).get('/api/task-instances?status=pending');

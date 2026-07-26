@@ -25,6 +25,14 @@ export function TaskCard({ instance, overdue, onChanged }: TaskCardProps) {
   const completed = instance.status === 'completed';
   const completedByUser = userById(instance.completedBy);
 
+  // Credit the assignee, not whoever happens to have the page open — the
+  // overview board is shared, so the viewer is rarely the doer. Unassigned
+  // ("Anyone") tasks and tasks whose assignee was deleted have no one to
+  // credit, so the person tapping Complete takes the credit there (the
+  // server also rejects completedBy ids that aren't existing users).
+  const completerId =
+    instance.assigneeId !== null && userById(instance.assigneeId) ? instance.assigneeId : me?.id;
+
   async function run(action: () => Promise<unknown>) {
     setBusy(true);
     setError(null);
@@ -86,8 +94,8 @@ export function TaskCard({ instance, overdue, onChanged }: TaskCardProps) {
           ) : (
             <button
               type="button"
-              disabled={busy || !me}
-              onClick={() => void run(() => completeInstance(instance.id, me!.id))}
+              disabled={busy || !completerId}
+              onClick={() => void run(() => completeInstance(instance.id, completerId!))}
               className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
             >
               Complete

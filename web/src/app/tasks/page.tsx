@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { TaskForm, type TaskFormValues } from '@/components/TaskForm';
-import { AssigneeBadge } from '@/components/UserBadge';
 import { useUser } from '@/context/UserContext';
 import { deleteDefinition, listDefinitions, updateDefinition } from '@/lib/api';
 import { formatDateShort } from '@/lib/dates';
@@ -50,7 +49,6 @@ export default function ManageTasksPage() {
       title: values.title,
       description: values.description,
       recurrence: values.recurrence,
-      assigneeId: values.assigneeId,
       points: values.points,
       autoAssignableTo: values.autoAssignableTo,
       dueOffsetDays: values.dueOffsetDays,
@@ -145,7 +143,7 @@ export default function ManageTasksPage() {
                 <th className={thCls}>Task</th>
                 <th className={thCls}>Repeats</th>
                 <th className={thCls}>Starts</th>
-                <th className={thCls}>Assigned to</th>
+                <th className={thCls}>Auto assignable to</th>
                 <th className={thCls}>Points</th>
                 <th className={thCls}>Due</th>
                 <th className={thCls}>State</th>
@@ -199,10 +197,11 @@ function DefinitionRow({ def, editing, busy, onEdit, onCancelEdit, onSave, onTog
         </td>
         <td className="px-3 py-2.5 whitespace-nowrap">{recurrenceLabel(def.recurrence)}</td>
         <td className="px-3 py-2.5 whitespace-nowrap">{def.startDate ? formatDateShort(def.startDate) : '—'}</td>
-        <td className="px-3 py-2.5">
-          <AssigneeBadge assigneeId={def.assigneeId} />
-          {autoAssignableNames.length > 0 && (
-            <div className="mt-1 text-xs whitespace-nowrap text-indigo-600">Auto: {autoAssignableNames.join(', ')}</div>
+        <td className="px-3 py-2.5 whitespace-nowrap">
+          {autoAssignableNames.length > 0 ? (
+            <span className="text-indigo-600">{autoAssignableNames.join(', ')}</span>
+          ) : (
+            <span className="text-neutral-400">Anyone</span>
           )}
         </td>
         <td className="px-3 py-2.5 whitespace-nowrap">{def.points ?? 0}</td>

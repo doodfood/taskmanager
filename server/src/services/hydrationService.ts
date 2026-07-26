@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { addWeeks, format, parseISO } from 'date-fns';
-import { addDaysStr, nowIso, todayPlus, todayStr } from '../clock.js';
+import { addDaysStr, nowIso, todayPlus } from '../clock.js';
 import type { StorageProvider } from '../storage/StorageProvider.js';
 import { recurrenceIntervalWeeks, type Recurrence, type TaskDefinition, type TaskInstance } from '../types.js';
 
@@ -11,23 +11,31 @@ export function stepDate(dateStr: string, recurrence: Exclude<Recurrence, 'none'
 }
 
 /**
- * Pick the auto-assignee for a new instance: the candidate with the fewest
- * outstanding points across their open tasks. A task is open for a user when
- * it is assigned to them, not completed, and its occurrenceDate has arrived
- * (today >= occurrenceDate) — hydrated occurrences still in the future don't
- * count. Ties go to the earliest candidate in `autoAssignableTo` order.
- * Returns null ("anyone") when the definition has no candidates.
+ * Pick the auto-assignee for a new instance occurring on `occurrenceDate`:
+ * the candidate with the fewest outstanding points across their open tasks
+ * *as at that date*. A task counts as open when it is assigned to the
+ * candidate, not completed, and its own occurrenceDate has arrived by then
+ * (occurrenceDate <= the new instance's) — tasks occurring later don't
+ * count. Evaluating the load at the occurrence date rather than "today"
+ * means tasks hydrated together for the same future day see each other and
+ * spread across candidates instead of all landing on the first one. When
+ * several candidates tie for the fewest points, one of them is picked
+ * uniformly at random. Returns null ("anyone") when the definition has no
+ * candidates.
  */
-export async function resolveAutoAssignee(storage: StorageProvider, def: TaskDefinition): Promise<string | null> {
+export async function resolveAutoAssignee(
+  storage: StorageProvider,
+  def: TaskDefinition,
+  occurrenceDate: string,
+): Promise<string | null> {
   // `?? []` covers legacy JSON records where the field is absent entirely.
   const candidates = def.autoAssignableTo ?? [];
   if (candidates.length === 0) return null;
 
-  const today = todayStr();
   const outstanding = new Map<string, number>(candidates.map((id) => [id, 0]));
   for (const instance of await storage.listInstances()) {
     if (instance.status !== 'pending') continue;
-    if (instance.occurrenceDate > today) continue; // not yet actionable — ignore
+    if (instance.occurrenceDate > occurrenceDate) continue; // occurs later — doesn't count yet
     if (instance.assigneeId === null) continue;
     const current = outstanding.get(instance.assigneeId);
     if (current !== undefined) {
@@ -36,11 +44,20 @@ export async function resolveAutoAssignee(storage: StorageProvider, def: TaskDef
     }
   }
 
-  let best = candidates[0];
+  // Fewest outstanding points wins; ties broken uniformly at random among
+  // the tied candidates (kept in `autoAssignableTo` order).
+  let bestPoints = Infinity;
+  let tied: string[] = [];
   for (const id of candidates) {
-    if ((outstanding.get(id) ?? 0) < (outstanding.get(best) ?? 0)) best = id;
+    const points = outstanding.get(id) ?? 0;
+    if (points < bestPoints) {
+      bestPoints = points;
+      tied = [id];
+    } else if (points === bestPoints) {
+      tied.push(id);
+    }
   }
-  return best;
+  return tied[Math.floor(Math.random() * tied.length)];
 }
 
 export async function instanceFromDefinition(
@@ -53,7 +70,7 @@ export async function instanceFromDefinition(
     definitionId: def.id,
     title: def.title,
     description: def.description,
-    assigneeId: await resolveAutoAssignee(storage, def),
+    assigneeId: await resolveAutoAssignee(storage, def, occurrenceDate),
     // `?? 1` covers legacy JSON definitions that predate the points field.
     points: def.points ?? 1,
     occurrenceDate,

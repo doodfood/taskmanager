@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setSpoofedDate } from '../src/clock.js';
 import { hydrateAll } from '../src/services/hydrationService.js';
 import { createTaskService } from '../src/services/taskService.js';
@@ -9,7 +9,14 @@ import { makeTestContext } from './helpers.js';
 
 let ctx: TestContext | null = null;
 
+beforeEach(() => {
+  // Ties are broken at random; default the roll to 0 (picks the first tied
+  // candidate) so tests stay deterministic unless they override it.
+  vi.spyOn(Math, 'random').mockReturnValue(0);
+});
+
 afterEach(async () => {
+  vi.restoreAllMocks();
   await ctx?.cleanup();
   ctx = null;
 });
@@ -21,7 +28,7 @@ describe('auto-assignment', () => {
     const [alice, bob] = ctx.users;
 
     // Alice already carries 5 outstanding points from an unrelated task.
-    await tasks.createDefinition({ title: 'Alice load', recurrence: 'none', assigneeId: alice.id, points: 5 });
+    await tasks.createDefinition({ title: 'Alice load', recurrence: 'none', autoAssignableTo: [alice.id], points: 5 });
 
     await tasks.createDefinition({
       title: 'Shared chore',
@@ -35,19 +42,28 @@ describe('auto-assignment', () => {
     expect(shared?.points).toBe(3);
   });
 
-  it('breaks ties by autoAssignableTo order', async () => {
+  it('breaks ties at random — a mocked low roll picks the first tied candidate', async () => {
     ctx = await makeTestContext('2026-07-20');
     const tasks = createTaskService(ctx.storage);
     const [alice, bob] = ctx.users;
 
-    await tasks.createDefinition({ title: 'AB', recurrence: 'none', autoAssignableTo: [alice.id, bob.id] });
-    await tasks.createDefinition({ title: 'BA', recurrence: 'none', autoAssignableTo: [bob.id, alice.id] });
+    // beforeEach already mocks the roll to 0 → tied[0]
+    await tasks.createDefinition({ title: 'Shared', recurrence: 'none', autoAssignableTo: [alice.id, bob.id] });
 
-    const instances = await ctx.storage.listInstances();
-    expect(instances.find((i) => i.title === 'AB')?.assigneeId).toBe(alice.id);
-    // NB: the AB instance counts 1 point against Alice by the time BA is created,
-    // so Bob would win even without the order tiebreak.
-    expect(instances.find((i) => i.title === 'BA')?.assigneeId).toBe(bob.id);
+    const shared = (await ctx.storage.listInstances()).find((i) => i.title === 'Shared');
+    expect(shared?.assigneeId).toBe(alice.id);
+  });
+
+  it('breaks ties at random — a mocked high roll picks the last tied candidate', async () => {
+    ctx = await makeTestContext('2026-07-20');
+    const tasks = createTaskService(ctx.storage);
+    const [alice, bob] = ctx.users;
+
+    vi.mocked(Math.random).mockReturnValue(0.999999); // → tied[tied.length - 1]
+    await tasks.createDefinition({ title: 'Shared', recurrence: 'none', autoAssignableTo: [alice.id, bob.id] });
+
+    const shared = (await ctx.storage.listInstances()).find((i) => i.title === 'Shared');
+    expect(shared?.assigneeId).toBe(bob.id);
   });
 
   it('does not count completed tasks towards the load', async () => {
@@ -55,33 +71,73 @@ describe('auto-assignment', () => {
     const tasks = createTaskService(ctx.storage);
     const [alice, bob] = ctx.users;
 
-    await tasks.createDefinition({ title: 'Alice done', recurrence: 'none', assigneeId: alice.id, points: 5 });
+    await tasks.createDefinition({ title: 'Alice done', recurrence: 'none', autoAssignableTo: [alice.id], points: 5 });
     const done = (await ctx.storage.listInstances()).find((i) => i.title === 'Alice done');
     await tasks.complete(done!.id, alice.id);
 
     await tasks.createDefinition({ title: 'Shared', recurrence: 'none', autoAssignableTo: [alice.id, bob.id] });
     const shared = (await ctx.storage.listInstances()).find((i) => i.title === 'Shared');
-    // 0–0 tie → first candidate wins.
+    // 0–0 tie → mocked low roll picks Alice.
     expect(shared?.assigneeId).toBe(alice.id);
   });
 
-  it('ignores occurrences still in the future', async () => {
+  it('counts open points as at the new instance’s occurrence date', async () => {
     ctx = await makeTestContext('2026-07-20');
     const tasks = createTaskService(ctx.storage);
     const [alice, bob] = ctx.users;
 
-    // Alice's 5-point task hasn't arrived yet (occurrenceDate tomorrow) → no load.
+    // Alice's 5-point task occurs tomorrow.
     await tasks.createDefinition({
       title: 'Alice future',
       recurrence: 'none',
-      assigneeId: alice.id,
+      autoAssignableTo: [alice.id],
       points: 5,
       startDate: '2026-07-21',
     });
 
-    await tasks.createDefinition({ title: 'Shared', recurrence: 'none', autoAssignableTo: [alice.id, bob.id] });
-    const shared = (await ctx.storage.listInstances()).find((i) => i.title === 'Shared');
-    expect(shared?.assigneeId).toBe(alice.id); // 0–0 tie → first candidate
+    // …invisible to a task occurring today (07-21 > 07-20) → 0–0 tie → mocked roll picks Alice.
+    await tasks.createDefinition({ title: 'Shared today', recurrence: 'none', autoAssignableTo: [alice.id, bob.id] });
+    const sharedToday = (await ctx.storage.listInstances()).find((i) => i.title === 'Shared today');
+    expect(sharedToday?.assigneeId).toBe(alice.id);
+
+    // …but counted for a task occurring on the same day as her load → Bob wins.
+    await tasks.createDefinition({
+      title: 'Shared tomorrow',
+      recurrence: 'none',
+      autoAssignableTo: [alice.id, bob.id],
+      startDate: '2026-07-21',
+    });
+    const sharedTomorrow = (await ctx.storage.listInstances()).find((i) => i.title === 'Shared tomorrow');
+    expect(sharedTomorrow?.assigneeId).toBe(bob.id);
+  });
+
+  it('spreads several same-day future occurrences across candidates as each one counts', async () => {
+    // Regression: three chores hydrated together for the same upcoming date
+    // used to all land on the first candidate, because the load window was
+    // anchored at "today" and future occurrences never counted.
+    ctx = await makeTestContext('2026-07-23');
+    const tasks = createTaskService(ctx.storage);
+    const [alice, bob] = ctx.users;
+
+    for (const title of ['Clean bathroom', 'Clean shower', 'Clean microwave']) {
+      await tasks.createDefinition({
+        title,
+        recurrence: 'weekly-1',
+        startDate: '2026-07-25', // two days out — nothing hydrated at creation
+        points: 1,
+        autoAssignableTo: [alice.id, bob.id],
+      });
+    }
+    expect(await ctx.storage.listInstances()).toHaveLength(0);
+
+    await hydrateAll(ctx.storage, 2); // horizon reaches 2026-07-25
+
+    const instances = await ctx.storage.listInstances();
+    expect(instances).toHaveLength(3);
+    const countFor = (id: string) => instances.filter((i) => i.assigneeId === id).length;
+    // 1st → Alice (0–0 tie, mocked low roll), 2nd → Bob (Alice has 1), 3rd → Alice (1–1 tie, mocked roll).
+    expect(countFor(alice.id)).toBe(2);
+    expect(countFor(bob.id)).toBe(1);
   });
 
   it('only counts tasks assigned to the candidates themselves', async () => {
@@ -92,11 +148,11 @@ describe('auto-assignment', () => {
     const carol = await users.create({ name: 'Carol' });
 
     // Carol is drowning in work but isn't a candidate — she must not skew the balance.
-    await tasks.createDefinition({ title: 'Carol load', recurrence: 'none', assigneeId: carol.id, points: 100 });
+    await tasks.createDefinition({ title: 'Carol load', recurrence: 'none', autoAssignableTo: [carol.id], points: 100 });
 
     await tasks.createDefinition({ title: 'Shared', recurrence: 'none', autoAssignableTo: [alice.id, bob.id] });
     const shared = (await ctx.storage.listInstances()).find((i) => i.title === 'Shared');
-    expect(shared?.assigneeId).toBe(alice.id); // 0–0 tie → first candidate
+    expect(shared?.assigneeId).toBe(alice.id); // 0–0 tie → mocked low roll picks Alice
   });
 
   it('balances recurring occurrences across candidates as the clock advances', async () => {
@@ -111,7 +167,7 @@ describe('auto-assignment', () => {
       autoAssignableTo: [alice.id, bob.id],
     });
 
-    // Creation-time occurrence: 0–0 tie → Alice.
+    // Creation-time occurrence: 0–0 tie → mocked low roll picks Alice.
     const assignees = (await ctx.storage.listInstances()).map((i) => i.assigneeId);
     expect(assignees).toEqual([alice.id]);
 
@@ -125,21 +181,21 @@ describe('auto-assignment', () => {
       a.occurrenceDate.localeCompare(b.occurrenceDate),
     );
     expect(byOccurrence.map((i) => i.occurrenceDate)).toEqual(['2026-07-20', '2026-07-27', '2026-08-03']);
-    // 07-27 → Bob (Alice had 2); 08-03 → Alice (2–2 tie, first candidate).
+    // 07-27 → Bob (Alice had 2); 08-03 → Alice (2–2 tie, mocked low roll).
     expect(byOccurrence.map((i) => i.assigneeId)).toEqual([alice.id, bob.id, alice.id]);
   });
 
-  it('falls back to assigneeId when the definition has no auto-assign candidates', async () => {
+  it('leaves instances for anyone when the definition has no auto-assign candidates', async () => {
     ctx = await makeTestContext('2026-07-20');
     const tasks = createTaskService(ctx.storage);
-    const [alice, bob] = ctx.users;
+    const [, bob] = ctx.users;
 
-    // Bob is less busy, but the definition names no candidates → keeps its assignee.
-    await tasks.createDefinition({ title: 'Bob load', recurrence: 'none', assigneeId: bob.id, points: 0 });
-    await tasks.createDefinition({ title: 'Fixed', recurrence: 'none', assigneeId: alice.id });
+    // Bob being less busy is irrelevant — the definition names no candidates.
+    await tasks.createDefinition({ title: 'Bob load', recurrence: 'none', autoAssignableTo: [bob.id], points: 0 });
+    await tasks.createDefinition({ title: 'Unpooled', recurrence: 'none' });
 
-    const fixed = (await ctx.storage.listInstances()).find((i) => i.title === 'Fixed');
-    expect(fixed?.assigneeId).toBe(alice.id);
+    const unpooled = (await ctx.storage.listInstances()).find((i) => i.title === 'Unpooled');
+    expect(unpooled?.assigneeId).toBeNull();
   });
 
   it('snapshots points onto the instance at hydration time', async () => {
@@ -163,12 +219,12 @@ describe('auto-assignment', () => {
       title: 'Legacy',
       description: '',
       recurrence: 'weekly-1',
-      assigneeId: null,
+      assigneeId: null, // retired field — present in old records, ignored now
       dueOffsetDays: 0,
       active: true,
       lastHydratedDate: null,
       createdAt: '2026-07-20T09:00:00.000Z',
-    } as TaskDefinition;
+    } as unknown as TaskDefinition;
     await ctx.storage.insertDefinition(legacy);
 
     const result = await hydrateAll(ctx.storage, 1);

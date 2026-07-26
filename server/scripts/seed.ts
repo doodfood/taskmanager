@@ -47,19 +47,26 @@ const TASKS: SeedTask[] = [
     title: 'Clean bathroom 1 floor',
     startDate: '2026-07-25',
     dueOffsetDays: 1,
-    autoAssign: ['Akhil', 'Eriko'],
+    autoAssign: ['Akhil', 'Eriko', 'Maya', 'Neha'],
   },
   {
     title: 'Clean bathroom 1 toilet bowl inside and outside and wipe flush tank',
     startDate: '2026-08-14',
     dueOffsetDays: 1,
-    autoAssign: ['Akhil', 'Eriko'],
+    autoAssign: ['Akhil', 'Eriko', 'Maya', 'Neha'],
   },
+  {
+    title: 'Wipe the kitchen cupboard doors',
+    startDate: '2026-08-21',
+    dueOffsetDays: 1,
+    autoAssign: ['Akhil', 'Eriko', 'Maya', 'Neha'],
+  },
+
   {
     title: 'Clean bathroom 2 floor',
     startDate: '2026-08-01',
     dueOffsetDays: 1,
-    autoAssign: ['Akhil', 'Eriko'],
+    autoAssign: ['Akhil', 'Eriko', 'Maya', 'Neha'],
   },
   {
     title: 'Clean shower 1 walls and floor rails',
@@ -86,7 +93,25 @@ const TASKS: SeedTask[] = [
     autoAssign: ['Maya', 'Neha'],
   },
   {
-    title: 'vacuum all the places vac vac cant reach',
+    title: 'Dust all the blinds',
+    startDate: '2026-08-08',
+    dueOffsetDays: 1,
+    autoAssign: ['Maya', 'Neha'],
+  },
+  {
+    title: 'Dusting (no blinds, not under sofas)',
+    startDate: '2026-08-15',
+    dueOffsetDays: 1,
+    autoAssign: ['Maya', 'Neha'],
+  },
+  {
+    title: 'Mopping/wiping edges of floors',
+    startDate: '2026-08-15',
+    dueOffsetDays: 1,
+    autoAssign: ['Maya', 'Neha'],
+  },  
+  {
+    title: 'Vacuum all the places vac vac cant reach',
     startDate: '2026-08-08',
     dueOffsetDays: 1,
     autoAssign: ['Akhil', 'Eriko'],
@@ -98,10 +123,28 @@ const TASKS: SeedTask[] = [
     autoAssign: ['Maya', 'Neha'],
   },
   {
+    title: 'Clean the oven inside and wipe outside',
+    startDate: '2026-08-01',
+    dueOffsetDays: 1,
+    autoAssign: ['Akhil', 'Eriko'],
+  },
+  {
+    title: 'Clean the stove top and knobs',
+    startDate: '2026-08-08',
+    dueOffsetDays: 1,
+    autoAssign: ['Akhil', 'Eriko'],
+  },
+  {
     title: 'Mowing edging hedging weed killer spray',
     startDate: '2026-08-15',
     dueOffsetDays: 1,
     autoAssign: ['Akhil'],
+  },
+    {
+    title: 'Clean the air filter',
+    startDate: '2026-08-15',
+    dueOffsetDays: 1,
+    autoAssign: ['Eriko'],
   },
 ];
 

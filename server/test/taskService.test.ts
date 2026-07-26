@@ -21,7 +21,7 @@ describe('taskService — definitions', () => {
     const def = await tasks.createDefinition({
       title: 'Fix the gate',
       recurrence: 'none',
-      assigneeId: ctx.users[0].id,
+      autoAssignableTo: [ctx.users[0].id], // sole candidate → always assigned to them
       dueOffsetDays: 3,
     });
     expect(def.recurrence).toBe('none');
@@ -102,13 +102,13 @@ describe('taskService — definitions', () => {
     await expect(tasks.createDefinition({ title: 'x', recurrence: 'weekly' })).rejects.toThrow(HttpError);
     await expect(tasks.createDefinition({ title: 'x', recurrence: 'weekly-14' })).rejects.toThrow(HttpError);
     await expect(tasks.createDefinition({ title: 'x', dueOffsetDays: -1 })).rejects.toThrow(HttpError);
-    await expect(tasks.createDefinition({ title: 'x', assigneeId: 'no-such-user' })).rejects.toThrow(HttpError);
+    await expect(tasks.createDefinition({ title: 'x', autoAssignableTo: ['no-such-user'] })).rejects.toThrow(HttpError);
   });
 
-  it('supports "anyone" assignment via null assigneeId', async () => {
+  it('creates instances for "anyone" when the definition has no auto-assign candidates', async () => {
     ctx = await makeTestContext();
     const tasks = createTaskService(ctx.storage);
-    await tasks.createDefinition({ title: 'Shared chore', recurrence: 'weekly-1', assigneeId: null });
+    await tasks.createDefinition({ title: 'Shared chore', recurrence: 'weekly-1' });
     const [instance] = await ctx.storage.listInstances();
     expect(instance.assigneeId).toBeNull();
   });
@@ -171,7 +171,7 @@ describe('taskService — instances', () => {
   it('reassigns a task to another user or back to anyone', async () => {
     ctx = await makeTestContext();
     const tasks = createTaskService(ctx.storage);
-    await tasks.createDefinition({ title: 'One-off', recurrence: 'none', assigneeId: ctx.users[0].id });
+    await tasks.createDefinition({ title: 'One-off', recurrence: 'none', autoAssignableTo: [ctx.users[0].id] });
     const [instance] = await ctx.storage.listInstances();
 
     expect((await tasks.reassign(instance.id, ctx.users[1].id)).assigneeId).toBe(ctx.users[1].id);
@@ -185,14 +185,14 @@ describe('taskService — instances', () => {
     const [alice, bob] = ctx.users;
 
     // Mine, due in 3 days.
-    await tasks.createDefinition({ title: 'Mine', recurrence: 'none', assigneeId: alice.id, dueOffsetDays: 3 });
+    await tasks.createDefinition({ title: 'Mine', recurrence: 'none', autoAssignableTo: [alice.id], dueOffsetDays: 3 });
     // Anyone, due today.
-    await tasks.createDefinition({ title: 'Shared', recurrence: 'none', assigneeId: null });
+    await tasks.createDefinition({ title: 'Shared', recurrence: 'none' });
     // Bob's — must not appear for Alice.
-    await tasks.createDefinition({ title: 'Bobs', recurrence: 'none', assigneeId: bob.id, dueOffsetDays: 1 });
+    await tasks.createDefinition({ title: 'Bobs', recurrence: 'none', autoAssignableTo: [bob.id], dueOffsetDays: 1 });
     // Overdue for Alice: created "yesterday" via clock rewind.
     setSpoofedDate('2026-07-19T09:00:00');
-    await tasks.createDefinition({ title: 'Overdue', recurrence: 'none', assigneeId: alice.id, dueOffsetDays: 0 });
+    await tasks.createDefinition({ title: 'Overdue', recurrence: 'none', autoAssignableTo: [alice.id], dueOffsetDays: 0 });
     setSpoofedDate('2026-07-20T09:00:00');
 
     const upcoming = await tasks.upcoming(alice.id, 7);
@@ -208,8 +208,8 @@ describe('taskService — instances', () => {
     const tasks = createTaskService(ctx.storage);
     const [alice] = ctx.users;
 
-    await tasks.createDefinition({ title: 'A', recurrence: 'none', assigneeId: alice.id, dueOffsetDays: 0 });
-    await tasks.createDefinition({ title: 'B', recurrence: 'none', assigneeId: null, dueOffsetDays: 5 });
+    await tasks.createDefinition({ title: 'A', recurrence: 'none', autoAssignableTo: [alice.id], dueOffsetDays: 0 });
+    await tasks.createDefinition({ title: 'B', recurrence: 'none', dueOffsetDays: 5 });
 
     const pending = await tasks.listInstances({ status: 'pending' });
     expect(pending).toHaveLength(2);

@@ -64,7 +64,10 @@ interface User { id: string; name: string; color: string; createdAt: string }
 interface TaskDefinition {
   id: string; title: string; description: string;
   recurrence: Recurrence;
-  assigneeId: string | null;      // null = "anyone"
+  points: number;                 // difficulty 0–100 (default 1); balances auto-assignment
+  autoAssignableTo: string[];     // user ids new occurrences may be auto-assigned to (fewest
+                                  // outstanding points as at the occurrence date wins, ties broken
+                                  // at random among the tied); empty = "anyone"
   dueOffsetDays: number;          // due N days after each occurrence
   startDate: string | null;       // yyyy-MM-dd first occurrence; null = anchor on creation date
   active: boolean;
@@ -76,6 +79,7 @@ interface TaskInstance {
   id: string; definitionId: string;
   title: string; description: string;       // snapshot of the definition at hydration time
   assigneeId: string | null;                // null = anyone
+  points: number;                           // difficulty snapshot from the definition
   occurrenceDate: string;                   // yyyy-MM-dd
   dueDate: string;                          // yyyy-MM-dd = occurrence + offset
   status: 'pending' | 'completed';
@@ -93,7 +97,7 @@ interface TaskInstance {
 | POST | `/users` | `{ name, color? }` | Colour auto-assigned from a palette if omitted |
 | DELETE | `/users/:id` | — | 204 |
 | GET | `/task-definitions` | — | List templates |
-| POST | `/task-definitions` | `{ title, description?, recurrence?, assigneeId?, dueOffsetDays?, startDate? }` | Defaults: `recurrence=none`, `assigneeId=null` (anyone), `dueOffsetDays=0`, `startDate=null` (creation date). One-offs hydrate instantly (on `startDate ?? today`); recurring hydrates first occurrence(s) immediately unless `startDate` is in the future |
+| POST | `/task-definitions` | `{ title, description?, recurrence?, points?, autoAssignableTo?, dueOffsetDays?, startDate? }` | Defaults: `recurrence=none`, `points=1`, `autoAssignableTo=[]` (anyone), `dueOffsetDays=0`, `startDate=null` (creation date). One-offs hydrate instantly (on `startDate ?? today`); recurring hydrates first occurrence(s) immediately unless `startDate` is in the future |
 | PATCH | `/task-definitions/:id` | partial fields + `active?` | Edit / deactivate |
 | DELETE | `/task-definitions/:id` | — | Deletes template + its **pending** instances; completed stay as history |
 | GET | `/task-instances` | `status=`, `assigneeId=` (`null` string = anyone), `from=`, `to=` (dueDate range), `includeAnyone=true` | Sorted by dueDate then title |
