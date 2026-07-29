@@ -1,4 +1,4 @@
-import type { ClockState, Recurrence, TaskDefinition, TaskInstance, User } from './types';
+import type { ClockState, LeaderboardEntry, Recurrence, TaskDefinition, TaskInstance, User } from './types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 
@@ -113,6 +113,15 @@ export const reopenInstance = (id: string) =>
 
 export const reassignInstance = (id: string, assigneeId: string | null) =>
   request<TaskInstance>(`/task-instances/${id}/reassign`, { method: 'POST', body: JSON.stringify({ assigneeId }) });
+
+// ---- leaderboard ------------------------------------------------------------
+
+/** Rolling-window sizes the leaderboard endpoint accepts. */
+export type LeaderboardWeeks = 1 | 2 | 4 | 8;
+
+/** Ranked points over the last N weeks (every user appears, even at 0). */
+export const getLeaderboard = (weeks: LeaderboardWeeks = 1) =>
+  request<LeaderboardEntry[]>(`/leaderboard?weeks=${weeks}`);
 
 // ---- debug clock (dev tool) -------------------------------------------------
 

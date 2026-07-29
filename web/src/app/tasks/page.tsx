@@ -103,12 +103,20 @@ export default function ManageTasksPage() {
       </Link>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold">Manage tasks</h1>
-        <Link
-          href="/tasks/new"
-          className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700"
-        >
-          + New task
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/leaderboard"
+            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-100"
+          >
+            🏆 Leaderboard
+          </Link>
+          <Link
+            href="/tasks/new"
+            className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700"
+          >
+            + New task
+          </Link>
+        </div>
       </div>
       <p className="mt-1 text-sm text-neutral-500">
         These are the templates the dashboard&rsquo;s occurrences are generated from. Edits apply to{' '}

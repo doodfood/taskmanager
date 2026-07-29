@@ -193,6 +193,12 @@ export default function OverviewPage() {
             switch
           </button>
           <Link
+            href="/leaderboard"
+            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-100"
+          >
+            🏆 Leaderboard
+          </Link>
+          <Link
             href="/tasks"
             className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-100"
           >

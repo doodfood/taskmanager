@@ -121,6 +121,19 @@ export interface PointRevocation {
 
 export type PointEvent = PointGrant | PointRevocation;
 
+// ---------- Leaderboard (mirrors server/src/services/leaderboardService.ts) ----------
+
+/** One ranked row of GET /api/leaderboard?weeks=1|2|4|8. */
+export interface LeaderboardEntry {
+  user: User;
+  /** Net points from un-revoked grants completed inside the window. */
+  totalPoints: number;
+  /** Un-revoked completions inside the window. */
+  tasksCompleted: number;
+  /** 1-based position after sorting (points desc, name asc). */
+  rank: number;
+}
+
 /** Shape returned by GET /api/debug/clock (POST adds `hydrated`). */
 export interface ClockState {
   spoofed: boolean;
