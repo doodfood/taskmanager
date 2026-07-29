@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { PointEvent, TaskDefinition, TaskInstance, User } from '../types.js';
+import type { BadgeAward, BadgeState, PointEvent, TaskDefinition, TaskInstance, User } from '../types.js';
 import type { StorageProvider } from './StorageProvider.js';
 
 interface StoreShape {
@@ -8,6 +8,7 @@ interface StoreShape {
   definitions: TaskDefinition[];
   instances: TaskInstance[];
   pointEvents: PointEvent[];
+  badgeAwards: BadgeAward[];
 }
 
 const FILES = {
@@ -15,7 +16,11 @@ const FILES = {
   definitions: 'task-definitions.json',
   instances: 'task-instances.json',
   pointEvents: 'point-events.json',
+  badgeAwards: 'badge-awards.json',
 } as const;
+
+/** Single-record rollover watermark + epoch (not a collection). */
+const BADGE_STATE_FILE = 'badge-state.json';
 
 /**
  * JSON-file-backed StorageProvider. Keeps an in-memory cache, persists the
@@ -24,7 +29,8 @@ const FILES = {
  * scale; swap for a DB-backed provider when you outgrow it.
  */
 export class JsonFileStorage implements StorageProvider {
-  private readonly data: StoreShape = { users: [], definitions: [], instances: [], pointEvents: [] };
+  private readonly data: StoreShape = { users: [], definitions: [], instances: [], pointEvents: [], badgeAwards: [] };
+  private badgeState: BadgeState | null = null;
   private writeQueue: Promise<void> = Promise.resolve();
 
   private constructor(private readonly dataDir: string) {}
@@ -49,6 +55,13 @@ export class JsonFileStorage implements StorageProvider {
         if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
         // Missing file = empty collection; created on first write.
       }
+    }
+    try {
+      const raw = await readFile(path.join(this.dataDir, BADGE_STATE_FILE), 'utf8');
+      this.badgeState = JSON.parse(raw) as BadgeState;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+      // Missing file = rollover has never run.
     }
   }
 
@@ -180,5 +193,35 @@ export class JsonFileStorage implements StorageProvider {
     this.data.pointEvents.push(event);
     await this.persist('pointEvents');
     return event;
+  }
+
+  // ---------- Badge awards ----------
+
+  listBadgeAwards(): Promise<BadgeAward[]> {
+    return Promise.resolve([...this.data.badgeAwards]);
+  }
+
+  async insertBadgeAward(award: BadgeAward): Promise<BadgeAward> {
+    this.data.badgeAwards.push(award);
+    await this.persist('badgeAwards');
+    return award;
+  }
+
+  // ---------- Badge rollover state ----------
+
+  getBadgeState(): Promise<BadgeState | null> {
+    return Promise.resolve(this.badgeState ? { ...this.badgeState } : null);
+  }
+
+  async setBadgeState(state: BadgeState): Promise<BadgeState> {
+    this.badgeState = { ...state };
+    this.writeQueue = this.writeQueue.then(async () => {
+      const file = path.join(this.dataDir, BADGE_STATE_FILE);
+      const tmp = `${file}.tmp`;
+      await writeFile(tmp, JSON.stringify(this.badgeState, null, 2), 'utf8');
+      await rename(tmp, file);
+    });
+    await this.writeQueue;
+    return state;
   }
 }

@@ -65,12 +65,15 @@ export async function instanceFromDefinition(
   def: TaskDefinition,
   occurrenceDate: string,
 ): Promise<TaskInstance> {
+  const assigneeId = await resolveAutoAssignee(storage, def, occurrenceDate);
   return {
     id: randomUUID(),
     definitionId: def.id,
     title: def.title,
     description: def.description,
-    assigneeId: await resolveAutoAssignee(storage, def, occurrenceDate),
+    assigneeId,
+    // Auto-assigned at hydration → streak risk attaches; "anyone" → none (D8).
+    assignmentKind: assigneeId === null ? 'none' : 'auto',
     // `?? 1` covers legacy JSON definitions that predate the points field.
     points: def.points ?? 1,
     occurrenceDate,

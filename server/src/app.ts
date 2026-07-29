@@ -1,9 +1,11 @@
 import cors from 'cors';
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
+import { badgesRouter } from './routes/badges.js';
 import { debugRouter } from './routes/debug.js';
 import { leaderboardRouter } from './routes/leaderboard.js';
 import { definitionsRouter, instancesRouter } from './routes/tasks.js';
 import { usersRouter } from './routes/users.js';
+import { createBadgeService } from './services/badgeService.js';
 import { createLeaderboardService } from './services/leaderboardService.js';
 import { createTaskService } from './services/taskService.js';
 import { createUserService } from './services/userService.js';
@@ -18,6 +20,7 @@ export function buildApp(storage: StorageProvider): Express {
   const users = createUserService(storage);
   const tasks = createTaskService(storage);
   const leaderboard = createLeaderboardService(storage);
+  const badges = createBadgeService(storage);
 
   const app = express();
   app.use(cors());
@@ -27,10 +30,11 @@ export function buildApp(storage: StorageProvider): Express {
     res.json({ ok: true, uptime: process.uptime() });
   });
 
-  app.use('/api/users', usersRouter(users));
+  app.use('/api/users', usersRouter(users, badges));
   app.use('/api/task-definitions', definitionsRouter(tasks));
   app.use('/api/task-instances', instancesRouter(tasks));
   app.use('/api/leaderboard', leaderboardRouter(leaderboard));
+  app.use('/api/badges', badgesRouter(badges));
   app.use('/api/debug', debugRouter(storage));
 
   app.use((_req: Request, res: Response) => {

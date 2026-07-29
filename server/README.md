@@ -17,7 +17,7 @@ First run creates `data/` and seeds the household users (override with `SEED_USE
 |---------|---------|
 | `npm run dev` | Dev server with watch mode |
 | `npm run build` / `npm start` | Compile to `dist/` and run |
-| `npm test` | Vitest suite (39 tests: storage, hydration, services, API) |
+| `npm test` | Vitest suite (171 tests: storage, hydration, services, badges, API) |
 | `npm run lint` | ESLint (flat config, typescript-eslint) |
 | `npm run typecheck` | `tsc --noEmit` |
 
@@ -48,6 +48,9 @@ Base: `http://localhost:4000/api`
 | POST | `/task-instances/:id/complete` | `{ completedBy }` |
 | POST | `/task-instances/:id/reopen` | Back to pending |
 | POST | `/task-instances/:id/reassign` | `{ assigneeId }` (null = anyone) |
+| GET | `/badges` | Badge catalogue (categories → badges with tier, priority, valueKind, description) |
+| GET | `/users/:id/badges` | `{ awarded, earned }` — permanent awards + live pending evaluation for the current week |
+| POST | `/debug/award-badges` | Run the weekly badge rollover on demand (scenario testing) |
 
 Errors are `{ "error": "message" }` with 400/404/409 status codes.
 
@@ -62,6 +65,16 @@ curl -X DELETE localhost:4000/api/debug/clock   # back to real time
 ```
 
 Setting the date **re-runs hydration immediately**, so recurring tasks materialise as if time really jumped — the frontend can use this to demo any scenario.
+
+## Badges
+
+Badges are **earned** during the week as jobs are completed and **awarded** at the Monday rollover. Earned = a pure recomputation over task instances (fluid: upgrades, downgrades on reopen, mid-week streak invalidation all happen on the next read). Awarded = an append-only ledger (`data/badge-awards.json`) written once per finished week — permanent, even if the underlying jobs are reopened later.
+
+- **Weeks** are Monday-anchored, server-local. The rollover watermark and the feature epoch live in `data/badge-state.json`; nothing before the epoch counts (no retroactivity). The rollover runs in the scheduler loop, lazily at the start of badge API reads, and on demand via `POST /api/debug/award-badges`. A multi-week clock jump produces a single award pass for the latest completed week.
+- **Categories** (one earned badge per category per week; highest priority wins, tier breaks ties): Amazing worker (1/2/3 in-window completions → bronze/silver/gold), Eager bunny (early completions, gold, value = count), Getting back on track (late completions, silver, value = count), and Streak superstar (consecutive clean / all-early weeks, tiered at 2/3/4+, value = streak length, re-awarded weekly while it holds). The eager streak line suppresses the amazing streak line when both qualify.
+- **Completion timing classes** are a strict partition by local date: early (< start date) feeds Eager bunny; in-window (start ≤ done ≤ due) feeds Amazing worker; late (> due) feeds Back on track. Completion badges credit `completedBy`.
+- **`assignmentKind`** on each instance (`auto` at hydration, `manual` after a reassign, `none` = anyone) drives streak risk: only auto-assigned jobs can break a streak. Manual/anyone jobs still *earn* completion badges for whoever does them. Consequence (accepted, RQ3): reassigning a risky overdue job to someone else cleanses it — revisit if the family starts exploiting this.
+- The catalogue and rules live in `src/badges/` (one file per category); adding a category = one new file + one line in `src/badges/index.ts`.
 
 ## Architecture notes
 

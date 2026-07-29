@@ -1,7 +1,8 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
+import type { BadgeService } from '../services/badgeService.js';
 import type { UserService } from '../services/userService.js';
 
-export function usersRouter(users: UserService): Router {
+export function usersRouter(users: UserService, badges: BadgeService): Router {
   const router = Router();
 
   router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
@@ -25,6 +26,15 @@ export function usersRouter(users: UserService): Router {
     try {
       await users.remove(req.params.id);
       res.status(204).end();
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Permanent awards + live (pending) evaluation for the current week.
+  router.get('/:id/badges', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.json(await badges.badgesForUser(req.params.id));
     } catch (err) {
       next(err);
     }

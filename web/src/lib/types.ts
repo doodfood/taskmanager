@@ -52,6 +52,9 @@ export interface TaskDefinition {
   createdAt: string; // ISO timestamp
 }
 
+/** How the current assignee got the job (drives badge streak immunity). */
+export type AssignmentKind = 'auto' | 'manual' | 'none';
+
 /** A concrete, actionable task materialised from a definition. */
 export interface TaskInstance {
   id: string;
@@ -60,6 +63,8 @@ export interface TaskInstance {
   description: string;
   /** null = anyone can do it */
   assigneeId: string | null;
+  /** How the current assignee got the job: auto at hydration, manual via reassign, none = anyone. */
+  assignmentKind: AssignmentKind;
   /** Difficulty snapshot from the definition at hydration time. */
   points: number;
   /** yyyy-MM-dd — the day this occurrence is for */

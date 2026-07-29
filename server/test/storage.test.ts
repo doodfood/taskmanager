@@ -66,6 +66,7 @@ describe('JsonFileStorage', () => {
       title: 'Bins',
       description: '',
       assigneeId: null,
+      assignmentKind: 'none',
       points: 1,
       occurrenceDate: '2026-07-20',
       dueDate: '2026-07-21',

@@ -58,6 +58,10 @@ export interface TaskDefinition {
   createdAt: string; // ISO timestamp
 }
 
+/** How the current assignee got the job: auto at hydration, manual via
+ *  reassign, or none (anyone). Drives badge streak immunity (plan D8). */
+export type AssignmentKind = 'auto' | 'manual' | 'none';
+
 /** A concrete, actionable task materialised from a definition. */
 export interface TaskInstance {
   id: string;
@@ -66,6 +70,12 @@ export interface TaskInstance {
   description: string;
   /** null = anyone can do it */
   assigneeId: string | null;
+  /**
+   * How the current assignee got the job. Only 'auto' jobs carry badge
+   * streak risk — manual/anyone jobs can earn badges but never break
+   * streaks (plan D8).
+   */
+  assignmentKind: AssignmentKind;
   /** Difficulty snapshot from the definition at hydration time. */
   points: number;
   /** yyyy-MM-dd — the day this occurrence is for */
@@ -137,6 +147,41 @@ export interface PointRevocation {
 }
 
 export type PointEvent = PointGrant | PointRevocation;
+
+// ---------- Badges ----------
+
+export type BadgeTier = 'bronze' | 'silver' | 'gold';
+
+/**
+ * Append-only record of a badge awarded at a weekly rollover. Awards are
+ * permanent: once written they are never updated or deleted, even if the
+ * underlying jobs are reopened later (plan D1/Q5).
+ */
+export interface BadgeAward {
+  id: string;
+  kind: 'badge-award';
+  userId: string;
+  /** e.g. 'amazing-worker-bronze' — references the badge catalogue in code. */
+  badgeId: string;
+  /** Value at award time: job count or streak length, per the badge's valueKind. */
+  value: number | null;
+  /** yyyy-MM-dd (Monday) of the week the badge was earned in. */
+  weekStart: string;
+  /** ISO timestamp of the award ceremony (central clock). */
+  awardedAt: string;
+}
+
+/**
+ * Weekly rollover watermark. `lastAwardedWeekStart` is the Monday of the
+ * most recently accounted-for week; `badgesEpoch` is the Monday of the week
+ * the feature first ran — nothing before it counts (plan Q11). Stored
+ * explicitly because quiet weeks write no awards, so neither date can be
+ * derived from the awards ledger.
+ */
+export interface BadgeState {
+  lastAwardedWeekStart: string; // yyyy-MM-dd (Monday)
+  badgesEpoch: string; // yyyy-MM-dd (Monday)
+}
 
 export class HttpError extends Error {
   constructor(

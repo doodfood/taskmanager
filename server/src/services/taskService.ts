@@ -288,7 +288,12 @@ export function createTaskService(storage: StorageProvider) {
     async reassign(id: string, assigneeId: unknown): Promise<TaskInstance> {
       await requireInstance(id);
       const target = await validateAssignee(storage, assigneeId);
-      const updated = await storage.updateInstance(id, { assigneeId: target });
+      // Manual assignments can credit badges but never punish streaks (D8);
+      // back to "anyone" clears assignment entirely.
+      const updated = await storage.updateInstance(id, {
+        assigneeId: target,
+        assignmentKind: target === null ? 'none' : 'manual',
+      });
       return updated!;
     },
   };

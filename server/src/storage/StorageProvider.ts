@@ -1,4 +1,4 @@
-import type { PointEvent, TaskDefinition, TaskInstance, User } from '../types.js';
+import type { BadgeAward, BadgeState, PointEvent, TaskDefinition, TaskInstance, User } from '../types.js';
 
 /**
  * The DB seam. Every persistence operation goes through this interface, so a
@@ -32,4 +32,12 @@ export interface StorageProvider {
   // Points ledger (append-only gamification history)
   listPointEvents(): Promise<PointEvent[]>;
   insertPointEvent(event: PointEvent): Promise<PointEvent>;
+
+  // Badge awards (append-only; written once per week at the Monday rollover)
+  listBadgeAwards(): Promise<BadgeAward[]>;
+  insertBadgeAward(award: BadgeAward): Promise<BadgeAward>;
+
+  // Badge rollover watermark + epoch (null until the first rollover runs)
+  getBadgeState(): Promise<BadgeState | null>;
+  setBadgeState(state: BadgeState): Promise<BadgeState>;
 }

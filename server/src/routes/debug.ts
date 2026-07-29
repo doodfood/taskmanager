@@ -1,6 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { getSpoofedDate, isSpoofed, nowIso, setSpoofedDate, todayStr } from '../clock.js';
 import { config } from '../config.js';
+import { createBadgeService } from '../services/badgeService.js';
 import { hydrateAll } from '../services/hydrationService.js';
 import type { StorageProvider } from '../storage/StorageProvider.js';
 import { badRequest } from '../types.js';
@@ -85,6 +86,19 @@ export function debugRouter(storage: StorageProvider): Router {
         }
       }
       res.json({ reset });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * Scenario testing: run the weekly badge rollover on demand — the same
+   * function the scheduler calls hourly and badge reads call lazily.
+   * Idempotent within a week; pair with the clock spoofer to cross Mondays.
+   */
+  router.post('/award-badges', async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.json(await createBadgeService(storage).rolloverIfNewWeek());
     } catch (err) {
       next(err);
     }
