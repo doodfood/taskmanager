@@ -139,6 +139,46 @@ export interface LeaderboardEntry {
   rank: number;
 }
 
+// ---------- Badges (mirrors server/src/types.ts + services/badgeService.ts) ----------
+
+export type BadgeTier = 'bronze' | 'silver' | 'gold';
+
+/** Permanent award written at a weekly rollover, joined with catalogue info at read time. */
+export interface AwardedBadge {
+  id: string;
+  kind: 'badge-award';
+  userId: string;
+  badgeId: string;
+  /** Job count or streak length at award time; null when the badge carries no value. */
+  value: number | null;
+  /** yyyy-MM-dd (Monday) of the week the badge was earned in. */
+  weekStart: string;
+  awardedAt: string; // ISO timestamp
+  /**
+   * Catalogue info; null if the badge id is no longer in the catalogue.
+   * `name` is the display name: the badge's name override when set, else the category name.
+   */
+  badge: { tier: BadgeTier; categoryId: string; categoryName: string; name: string; description: string } | null;
+}
+
+/** Live evaluation for the current week — qualifies now, not yet awarded ("pending"). */
+export interface EarnedBadge {
+  badgeId: string;
+  categoryId: string;
+  categoryName: string;
+  /** Display name: the badge's name override when set, else the category name. */
+  name: string;
+  tier: BadgeTier;
+  value: number | null;
+  description: string;
+}
+
+/** Shape returned by GET /api/users/:id/badges. */
+export interface UserBadges {
+  awarded: AwardedBadge[];
+  earned: EarnedBadge[];
+}
+
 /** Shape returned by GET /api/debug/clock (POST adds `hydrated`). */
 export interface ClockState {
   spoofed: boolean;

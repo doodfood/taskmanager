@@ -16,11 +16,17 @@ export interface RolloverResult {
 }
 
 export interface AwardedBadgeView extends BadgeAward {
-  /** Catalogue info joined at read time; null if the badge id is unknown. */
-  badge: { tier: string; categoryId: string; description: string } | null;
+  /**
+   * Catalogue info joined at read time; null if the badge id is unknown.
+   * `name` is the display name: the badge's name override when set, else the category name.
+   */
+  badge: { tier: string; categoryId: string; categoryName: string; name: string; description: string } | null;
 }
 
 export interface EarnedBadgeView extends EarnedBadge {
+  categoryName: string;
+  /** Display name: the badge's name override when set, else the category name. */
+  name: string;
   description: string;
 }
 
@@ -109,7 +115,13 @@ export function createBadgeService(storage: StorageProvider) {
           return {
             ...award,
             badge: found
-              ? { tier: found.badge.tier, categoryId: found.category.id, description: found.badge.description }
+              ? {
+                  tier: found.badge.tier,
+                  categoryId: found.category.id,
+                  categoryName: found.category.name,
+                  name: found.badge.name ?? found.category.name,
+                  description: found.badge.description,
+                }
               : null,
           };
         });
@@ -117,7 +129,12 @@ export function createBadgeService(storage: StorageProvider) {
       const earned = evaluateBadges(userId, todayStr(), await storage.listInstances(), state.badgesEpoch).map(
         (badge) => {
           const found = findBadge(badge.badgeId);
-          return { ...badge, description: found?.badge.description ?? '' };
+          return {
+            ...badge,
+            categoryName: found?.category.name ?? '',
+            name: found?.badge.name ?? found?.category.name ?? '',
+            description: found?.badge.description ?? '',
+          };
         },
       );
 

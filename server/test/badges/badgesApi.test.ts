@@ -34,11 +34,20 @@ describe('badges API', () => {
       'streak-eager-silver',
       'streak-eager-gold',
     ]);
+    // Name overrides: the streak lines carry their own display name; badges
+    // without an override emit null and fall back to the category name.
+    expect(streak.badges.find((b: { id: string }) => b.id === 'streak-amazing-bronze').name).toBe(
+      'Amazing worker streak',
+    );
+    expect(streak.badges.find((b: { id: string }) => b.id === 'streak-eager-gold').name).toBe('Eager bunny streak');
+    const amazing = res.body.find((c: { id: string }) => c.id === 'amazing-worker');
+    expect(amazing.badges[0].name).toBeNull();
     for (const category of res.body) {
       for (const badge of category.badges) {
         expect(badge).toHaveProperty('tier');
         expect(badge).toHaveProperty('priority');
         expect(badge).toHaveProperty('valueKind');
+        expect(badge).toHaveProperty('name');
         expect(badge).toHaveProperty('description');
         expect(badge).not.toHaveProperty('evaluate');
       }
@@ -70,6 +79,8 @@ describe('badges API', () => {
     expect(res.body.earned[0]).toMatchObject({
       badgeId: 'eager-bunny-gold',
       categoryId: 'eager-bunny',
+      categoryName: 'Eager bunny',
+      name: 'Eager bunny', // no override → falls back to the category name
       tier: 'gold',
       value: 1,
     });
@@ -112,8 +123,99 @@ describe('badges API', () => {
       badgeId: 'amazing-worker-bronze',
       value: null,
       weekStart: '2026-07-20',
-      badge: { tier: 'bronze', categoryId: 'amazing-worker' },
+      badge: { tier: 'bronze', categoryId: 'amazing-worker', categoryName: 'Amazing worker', name: 'Amazing worker' },
     });
+  });
+
+  it('POST /api/debug/clock runs the badge rollover when a jump crosses a Monday', async () => {
+    ctx = await makeTestContext('2026-07-20');
+    const app = buildApp(ctx.storage);
+    const [alice] = ctx.users;
+
+    // Initialise the epoch this week (first rollover ever awards nothing).
+    await request(app).post('/api/debug/award-badges');
+
+    // Complete a job in-window this week.
+    await request(app).post('/api/task-definitions').send({ title: 'Chore', recurrence: 'none', dueOffsetDays: 2 });
+    const instances = await request(app).get('/api/task-instances');
+    await request(app)
+      .post(`/api/task-instances/${instances.body[0].id}/complete`)
+      .send({ completedBy: alice.id });
+
+    // Jumping the clock across the Monday boundary awards the finished week
+    // immediately — no scheduler tick or badge read required.
+    const jump = await request(app).post('/api/debug/clock').send({ date: '2026-07-27' });
+    expect(jump.status).toBe(200);
+    expect(jump.body.rollover).toEqual({ initialised: false, awardedWeekStart: '2026-07-20', awarded: 1 });
+
+    const badges = await request(app).get(`/api/users/${alice.id}/badges`);
+    expect(badges.body.awarded).toHaveLength(1);
+    expect(badges.body.awarded[0]).toMatchObject({ badgeId: 'amazing-worker-bronze', weekStart: '2026-07-20' });
+  });
+
+  it('POST /api/debug/reset-badge-state unsticks a watermark left in the future by a spoofed jump', async () => {
+    ctx = await makeTestContext('2026-07-20');
+    const app = buildApp(ctx.storage);
+
+    // Initialise the epoch this week (first rollover ever awards nothing).
+    await request(app).post('/api/debug/award-badges');
+
+    // A spoofed jump five Mondays ahead runs a rollover there, leaving the
+    // watermark in the "future" once the clock comes back.
+    setSpoofedDate('2026-08-24T09:00:00');
+    await request(app).post('/api/debug/award-badges');
+    expect((await ctx.storage.getBadgeState())!.lastAwardedWeekStart).toBe('2026-08-24');
+
+    // Back in the present the rollover is suppressed: this Monday is behind
+    // the watermark, so no award pass can ever run until real time catches up.
+    setSpoofedDate('2026-07-30T09:00:00'); // Thursday of the 2026-07-27 week
+    const stuck = await request(app).post('/api/debug/award-badges');
+    expect(stuck.body).toEqual({ initialised: false, awardedWeekStart: null, awarded: 0 });
+
+    // The reset rewinds both fields to the Monday of the current server week.
+    const reset = await request(app).post('/api/debug/reset-badge-state');
+    expect(reset.status).toBe(200);
+    expect(reset.body).toEqual({ lastAwardedWeekStart: '2026-07-27', badgesEpoch: '2026-07-27' });
+    expect(await ctx.storage.getBadgeState()).toEqual({
+      lastAwardedWeekStart: '2026-07-27',
+      badgesEpoch: '2026-07-27',
+    });
+
+    // The next Monday rollover now awards the finished week again.
+    setSpoofedDate('2026-08-03T09:00:00');
+    const rollover = await request(app).post('/api/debug/award-badges');
+    expect(rollover.body.awardedWeekStart).toBe('2026-07-27');
+  });
+
+  it('POST /api/debug/clear-badge-awards wipes the permanent award ledger', async () => {
+    ctx = await makeTestContext('2026-07-20');
+    const app = buildApp(ctx.storage);
+    const [alice] = ctx.users;
+
+    // Initialise the epoch, complete a job, cross the Monday boundary → award.
+    await request(app).post('/api/debug/award-badges');
+    await request(app).post('/api/task-definitions').send({ title: 'Chore', recurrence: 'none', dueOffsetDays: 2 });
+    const instances = await request(app).get('/api/task-instances');
+    await request(app)
+      .post(`/api/task-instances/${instances.body[0].id}/complete`)
+      .send({ completedBy: alice.id });
+    setSpoofedDate('2026-07-27T09:00:00');
+    await request(app).post('/api/debug/award-badges');
+    expect((await request(app).get(`/api/users/${alice.id}/badges`)).body.awarded).toHaveLength(1);
+
+    // Clear: ledger emptied, the user's awarded list drops back to nothing.
+    const cleared = await request(app).post('/api/debug/clear-badge-awards');
+    expect(cleared.status).toBe(200);
+    expect(cleared.body).toEqual({ cleared: 1 });
+    expect(await ctx.storage.listBadgeAwards()).toEqual([]);
+    expect((await request(app).get(`/api/users/${alice.id}/badges`)).body.awarded).toEqual([]);
+
+    // The rollover watermark is untouched, so the cleared week is not
+    // re-awarded by the next lazy rollover.
+    expect((await ctx.storage.getBadgeState())!.lastAwardedWeekStart).toBe('2026-07-27');
+
+    // Idempotent: nothing left to clear.
+    expect((await request(app).post('/api/debug/clear-badge-awards')).body).toEqual({ cleared: 0 });
   });
 
   it('hydrated instances record assignmentKind; reassign updates it (D8)', async () => {

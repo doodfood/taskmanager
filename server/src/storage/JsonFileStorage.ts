@@ -195,6 +195,14 @@ export class JsonFileStorage implements StorageProvider {
     return event;
   }
 
+  async clearPointEvents(): Promise<number> {
+    const removed = this.data.pointEvents.length;
+    if (removed === 0) return 0;
+    this.data.pointEvents = [];
+    await this.persist('pointEvents');
+    return removed;
+  }
+
   // ---------- Badge awards ----------
 
   listBadgeAwards(): Promise<BadgeAward[]> {
@@ -205,6 +213,14 @@ export class JsonFileStorage implements StorageProvider {
     this.data.badgeAwards.push(award);
     await this.persist('badgeAwards');
     return award;
+  }
+
+  async clearBadgeAwards(): Promise<number> {
+    const removed = this.data.badgeAwards.length;
+    if (removed === 0) return 0;
+    this.data.badgeAwards = [];
+    await this.persist('badgeAwards');
+    return removed;
   }
 
   // ---------- Badge rollover state ----------

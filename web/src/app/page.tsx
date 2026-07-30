@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ClockSpoofer } from '@/components/ClockSpoofer';
+import { GamificationReset } from '@/components/GamificationReset';
 import { HydrationReset } from '@/components/HydrationReset';
 import { TaskCard } from '@/components/TaskCard';
 import { useUser } from '@/context/UserContext';
@@ -199,6 +200,12 @@ export default function OverviewPage() {
             🏆 Leaderboard
           </Link>
           <Link
+            href="/badges"
+            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-100"
+          >
+            🎖️ Badges
+          </Link>
+          <Link
             href="/tasks"
             className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-100"
           >
@@ -287,6 +294,7 @@ export default function OverviewPage() {
 
       <ClockSpoofer clock={clock} onChanged={() => void load()} />
       <HydrationReset onChanged={() => void load()} />
+      <GamificationReset onChanged={() => void load()} />
     </main>
   );
 }

@@ -30,6 +30,8 @@ export function badgeCatalogue() {
       tier: badge.tier,
       priority: badge.priority,
       valueKind: badge.valueKind,
+      /** Display-name override; null = fall back to the category name. */
+      name: badge.name ?? null,
       description: badge.description,
     })),
   }));

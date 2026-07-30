@@ -32,10 +32,14 @@ export interface StorageProvider {
   // Points ledger (append-only gamification history)
   listPointEvents(): Promise<PointEvent[]>;
   insertPointEvent(event: PointEvent): Promise<PointEvent>;
+  /** Removes every point event; returns the number removed. Used by debug/test tooling. */
+  clearPointEvents(): Promise<number>;
 
   // Badge awards (append-only; written once per week at the Monday rollover)
   listBadgeAwards(): Promise<BadgeAward[]>;
   insertBadgeAward(award: BadgeAward): Promise<BadgeAward>;
+  /** Removes every badge award; returns the number removed. Used by debug/test tooling. */
+  clearBadgeAwards(): Promise<number>;
 
   // Badge rollover watermark + epoch (null until the first rollover runs)
   getBadgeState(): Promise<BadgeState | null>;

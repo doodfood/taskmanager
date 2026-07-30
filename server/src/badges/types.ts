@@ -76,6 +76,8 @@ export interface BadgeDefinition {
   /** Decides the single earned badge within a category (D5): highest number wins. */
   priority: number;
   valueKind: ValueKind;
+  /** Optional display-name override; the category name is used when absent. */
+  name?: string;
   description: string;
   /** Returns the badge's value when it is earned this week, null otherwise. */
   evaluate: (ctx: EvaluationContext) => { value: number } | null;

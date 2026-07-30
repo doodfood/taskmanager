@@ -1,4 +1,4 @@
-import type { ClockState, LeaderboardEntry, Recurrence, TaskDefinition, TaskInstance, User } from './types';
+import type { ClockState, LeaderboardEntry, Recurrence, TaskDefinition, TaskInstance, User, UserBadges } from './types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 
@@ -114,6 +114,15 @@ export const reopenInstance = (id: string) =>
 export const reassignInstance = (id: string, assigneeId: string | null) =>
   request<TaskInstance>(`/task-instances/${id}/reassign`, { method: 'POST', body: JSON.stringify({ assigneeId }) });
 
+// ---- badges -----------------------------------------------------------------
+
+/**
+ * Permanent awards + live (pending) evaluation for the current week. Reading
+ * this also triggers the lazy Monday rollover server-side, so a fresh fetch
+ * reflects any week boundary just crossed.
+ */
+export const getUserBadges = (userId: string) => request<UserBadges>(`/users/${userId}/badges`);
+
 // ---- leaderboard ------------------------------------------------------------
 
 /** Rolling-window sizes the leaderboard endpoint accepts. */
@@ -127,9 +136,19 @@ export const getLeaderboard = (weeks: LeaderboardWeeks = 1) =>
 
 export const getClock = () => request<ClockState>('/debug/clock');
 
-/** Pass a yyyy-MM-dd date to spoof, or null to reset. Re-runs hydration server-side. */
+/** Rollover outcome returned alongside the clock state after a spoof jump. */
+export interface ClockRollover {
+  initialised: boolean;
+  awardedWeekStart: string | null;
+  awarded: number;
+}
+
+/** Pass a yyyy-MM-dd date to spoof, or null to reset. Re-runs hydration + badge rollover server-side. */
 export const setClock = (date: string | null) =>
-  request<ClockState & { hydrated?: number }>('/debug/clock', { method: 'POST', body: JSON.stringify({ date }) });
+  request<ClockState & { hydrated?: number; rollover?: ClockRollover }>('/debug/clock', {
+    method: 'POST',
+    body: JSON.stringify({ date }),
+  });
 
 export const resetClock = () => request<ClockState>('/debug/clock', { method: 'DELETE' });
 
@@ -142,3 +161,28 @@ export const clearInstances = () =>
 /** Sets lastHydratedDate back to null on every definition; returns how many changed. */
 export const resetWatermarks = () =>
   request<{ reset: number }>('/debug/reset-watermarks', { method: 'POST' });
+
+// ---- debug gamification reset (dev tool) ------------------------------------
+
+/** Badge rollover watermark + epoch (both yyyy-MM-dd Mondays). */
+export interface BadgeState {
+  lastAwardedWeekStart: string;
+  badgesEpoch: string;
+}
+
+/**
+ * Rewinds the badge watermark + epoch to the Monday of the current server
+ * week — unsticks awards after a spoofed jump ran a rollover in the future.
+ */
+export const resetBadgeState = () => request<BadgeState>('/debug/reset-badge-state', { method: 'POST' });
+
+/**
+ * Wipes the points ledger so everyone's balance returns to zero; also nulls
+ * the pointsAwarded snapshot on completed instances.
+ */
+export const clearPoints = () =>
+  request<{ cleared: number; snapshotsCleared: number }>('/debug/clear-points', { method: 'POST' });
+
+/** Wipes the permanent badge award ledger (the rollover watermark + epoch are untouched). */
+export const clearBadgeAwards = () =>
+  request<{ cleared: number }>('/debug/clear-badge-awards', { method: 'POST' });

@@ -39,7 +39,11 @@ export function ClockSpoofer({ clock, onChanged }: ClockSpooferProps) {
   const jump = () =>
     void run(async () => {
       const res = await setClock(date);
-      return `Jumped to ${formatDateShort(res.today)} — hydrated ${res.hydrated ?? 0} new occurrence(s)`;
+      let msg = `Jumped to ${formatDateShort(res.today)} — hydrated ${res.hydrated ?? 0} new occurrence(s)`;
+      if (res.rollover && res.rollover.awarded > 0) {
+        msg += `; awarded ${res.rollover.awarded} badge(s) for week of ${formatDateShort(res.rollover.awardedWeekStart ?? '')}`;
+      }
+      return msg;
     });
 
   const reset = () =>

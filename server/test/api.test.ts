@@ -141,6 +141,41 @@ describe('API', () => {
     expect((await request(app).get('/api/task-instances')).body).toHaveLength(2);
   });
 
+  it('POST /api/debug/clear-points wipes the ledger and task point snapshots', async () => {
+    ctx = await makeTestContext('2026-07-20');
+    const app = buildApp(ctx.storage);
+    const [, bob] = ctx.users;
+
+    // Complete a job so a grant lands in the ledger and on the instance.
+    await request(app).post('/api/task-definitions').send({ title: 'Chore', recurrence: 'none', points: 20 });
+    const instances = await request(app).get('/api/task-instances');
+    const completed = await request(app)
+      .post(`/api/task-instances/${instances.body[0].id}/complete`)
+      .send({ completedBy: bob.id });
+    expect(completed.body.pointsAwarded).toBeGreaterThan(0);
+    const before = await request(app).get('/api/leaderboard?weeks=1');
+    expect(before.body.find((e: { user: { id: string } }) => e.user.id === bob.id).totalPoints).toBeGreaterThan(0);
+
+    // Clear: ledger emptied, snapshot nulled, balances back to zero.
+    const cleared = await request(app).post('/api/debug/clear-points');
+    expect(cleared.status).toBe(200);
+    expect(cleared.body).toEqual({ cleared: 1, snapshotsCleared: 1 });
+    expect(await ctx.storage.listPointEvents()).toEqual([]);
+    const instance = await request(app).get(`/api/task-instances?status=completed`);
+    expect(instance.body[0].pointsAwarded).toBeNull();
+    const after = await request(app).get('/api/leaderboard?weeks=1');
+    for (const entry of after.body) {
+      expect(entry.totalPoints).toBe(0);
+      expect(entry.tasksCompleted).toBe(0);
+    }
+
+    // Idempotent: nothing left to clear.
+    expect((await request(app).post('/api/debug/clear-points')).body).toEqual({
+      cleared: 0,
+      snapshotsCleared: 0,
+    });
+  });
+
   it('rejects an invalid spoof date', async () => {
     ctx = await makeTestContext();
     const app = buildApp(ctx.storage);

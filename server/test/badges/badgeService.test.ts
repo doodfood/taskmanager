@@ -66,6 +66,11 @@ describe('badgeService.rolloverIfNewWeek', () => {
     const view = await badges.badgesForUser(alice.id);
     expect(view.awarded).toEqual([]);
     expect(view.earned.map((b) => b.badgeId)).toContain('amazing-worker-bronze');
+    // No name override → the view falls back to the category name.
+    expect(view.earned.find((b) => b.badgeId === 'amazing-worker-bronze')).toMatchObject({
+      categoryName: 'Amazing worker',
+      name: 'Amazing worker',
+    });
   });
 
   it('awards the finished week\'s badges at the Monday rollover, with values', async () => {
@@ -170,7 +175,7 @@ describe('badgeService.rolloverIfNewWeek', () => {
     expect(view.awarded.map((a) => a.badgeId)).toContain('amazing-worker-bronze');
     expect(view.awarded[0]).toMatchObject({
       weekStart: '2026-07-20',
-      badge: { tier: 'bronze', categoryId: 'amazing-worker' },
+      badge: { tier: 'bronze', categoryId: 'amazing-worker', categoryName: 'Amazing worker' },
     });
   });
 
@@ -251,6 +256,12 @@ describe('badgeService — streaks across multiple weekly rollovers', () => {
     expect(awards.has('2026-07-27:amazing-worker-bronze')).toBe(true);
     expect(awards.get('2026-07-27:streak-amazing-bronze')).toBe(2);
 
+    // The badge's name override wins over the category name in the read view.
+    const view = await badges.badgesForUser(alice.id);
+    expect(view.awarded.find((a) => a.badgeId === 'streak-amazing-bronze')?.badge?.name).toBe(
+      'Amazing worker streak',
+    );
+
     monday(3);
     await badges.rolloverIfNewWeek();
     awards = await awardedByWeek();
@@ -306,5 +317,8 @@ describe('badgeService — streaks across multiple weekly rollovers', () => {
     expect(ids).not.toContain('streak-amazing-bronze'); // suppressed by the eager line (Q2)
     expect(awards.find((a) => a.badgeId === 'streak-eager-bronze')?.value).toBe(2);
     expect(ids).toContain('eager-bunny-gold'); // the week's early completion also counts
+
+    const view = await badges.badgesForUser(alice.id);
+    expect(view.awarded.find((a) => a.badgeId === 'streak-eager-bronze')?.badge?.name).toBe('Eager bunny streak');
   });
 });

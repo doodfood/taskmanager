@@ -27,6 +27,14 @@ export function addDaysStr(s: string, days: number): string {
   return toDateStr(d);
 }
 
+/** yyyy-MM-dd of the Monday of the week containing the given yyyy-MM-dd date. */
+export function mondayOf(s: string): string {
+  const d = parseDateStr(s);
+  // getDay(): Sun=0 … Sat=6 → shift so Mon=0 … Sun=6, then step back.
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return toDateStr(d);
+}
+
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 
