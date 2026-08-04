@@ -1,6 +1,6 @@
 import type { ClockState, LeaderboardEntry, Recurrence, TaskDefinition, TaskInstance, User, UserBadges } from './types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
+const API_URL = '/api';
 
 /** Thrown for `{ "error": "..." }` API responses and network failures. */
 export class ApiError extends Error {

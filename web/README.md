@@ -6,10 +6,10 @@ Next.js 16 (App Router) + TypeScript + Tailwind v4 frontend for the household ta
 
 ```bash
 npm install
-npm run dev        # http://localhost:3000 — expects the API on :4000
+npm run dev        # http://localhost:3000 — proxies API requests to :4000
 ```
 
-The API base URL comes from `NEXT_PUBLIC_API_URL` in `.env.local` (default `http://localhost:4000/api`).
+The browser calls the same-origin `/api` route. Next.js proxies those requests to the API server. Set `API_INTERNAL_URL` in `.env.local` only when the API is not at the default `http://127.0.0.1:4000/api`.
 
 ## Scripts
 

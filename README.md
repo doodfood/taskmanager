@@ -18,7 +18,7 @@ npm run setup        # install server/ and web/ dependencies
 npm run dev          # boot API (:4000) + web (:3000) together
 ```
 
-Open http://localhost:3000 — the first visit asks who you are (seeded users: Akhil, Eriko, Maya, Neha, overridable via `SEED_USERS`). Delete `server/data/` to reset everything, then `npm run seed` (with the API running) to re-insert the users and the cleaning rota.
+Open http://localhost:3000 — the browser uses the same-origin Next.js `/api` proxy, which forwards to the API on :4000. The first visit asks who you are (seeded users: Akhil, Eriko, Maya, Neha, overridable via `SEED_USERS`). Delete `server/data/` to reset everything, then `npm run seed` (with the API running) to re-insert the users and the cleaning rota.
 
 ## Scripts (root)
 
