@@ -5,10 +5,13 @@ import { useUser } from '@/context/UserContext';
 import { completeInstance, reassignInstance, reopenInstance } from '@/lib/api';
 import { formatDateShort, formatTimeLocal } from '@/lib/dates';
 import type { TaskInstance } from '@/lib/types';
+import { pointsForCompletionToday } from '@/lib/scoring';
 import { AssigneeBadge } from './UserBadge';
 
 interface TaskCardProps {
   instance: TaskInstance;
+  /** Server's effective current date, including when the debug clock is spoofed. */
+  today: string;
   /** True when rendered inside the Overdue group. */
   overdue: boolean;
   /** Called after any successful mutation so the parent can refetch. */
@@ -17,7 +20,7 @@ interface TaskCardProps {
 
 const ANYONE = '__anyone__';
 
-export function TaskCard({ instance, overdue, onChanged }: TaskCardProps) {
+export function TaskCard({ instance, today, overdue, onChanged }: TaskCardProps) {
   const { me, users, userById } = useUser();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,16 +67,16 @@ export function TaskCard({ instance, overdue, onChanged }: TaskCardProps) {
           )}
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
             <AssigneeBadge assigneeId={instance.assigneeId} />
-            {/* Completed cards show the points actually earned (early/on-time/
-                late adjustment applied); pending and pre-gamification
-                completions fall back to the face value. */}
+            {/* Completed cards show the points actually earned. Pending cards
+                show the award for completing on the server's current date. */}
             {completed && instance.pointsAwarded != null ? (
               <span className="font-semibold text-emerald-600">
                 +{instance.pointsAwarded} pt{instance.pointsAwarded === 1 ? '' : 's'}
               </span>
             ) : (
               <span>
-                {instance.points ?? 0} pt{(instance.points ?? 0) === 1 ? '' : 's'}
+                {pointsForCompletionToday(instance.points ?? 0, instance.dueDate, today)} pt
+                {pointsForCompletionToday(instance.points ?? 0, instance.dueDate, today) === 1 ? '' : 's'}
               </span>
             )}
             {/* "for" = the occurrence day — when the task becomes actionable.

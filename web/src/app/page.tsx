@@ -320,7 +320,13 @@ function GroupList({
       </h3>
       <ul className="mt-2 space-y-2">
         {items.map((t) => (
-          <TaskCard key={t.id} instance={t} overdue={clock !== null && t.dueDate < clock.today} onChanged={onChanged} />
+          <TaskCard
+            key={t.id}
+            instance={t}
+            today={clock?.today ?? t.dueDate}
+            overdue={clock !== null && t.dueDate < clock.today}
+            onChanged={onChanged}
+          />
         ))}
       </ul>
     </div>
