@@ -140,6 +140,32 @@ describe('auto-assignment', () => {
     expect(countFor(bob.id)).toBe(1);
   });
 
+  it('hydrates tasks with fewer candidates before tasks with more candidates', async () => {
+    ctx = await makeTestContext('2026-07-23');
+    const tasks = createTaskService(ctx.storage);
+    const [alice, bob] = ctx.users;
+
+    // Create the broader task first to prove hydration reorders definitions.
+    await tasks.createDefinition({
+      title: 'Shared chore',
+      recurrence: 'weekly-1',
+      startDate: '2026-07-25',
+      autoAssignableTo: [alice.id, bob.id],
+    });
+    await tasks.createDefinition({
+      title: 'Alice-only chore',
+      recurrence: 'weekly-1',
+      startDate: '2026-07-25',
+      autoAssignableTo: [alice.id],
+    });
+
+    await hydrateAll(ctx.storage, 2);
+
+    const instances = await ctx.storage.listInstances();
+    expect(instances.find((i) => i.title === 'Alice-only chore')?.assigneeId).toBe(alice.id);
+    expect(instances.find((i) => i.title === 'Shared chore')?.assigneeId).toBe(bob.id);
+  });
+
   it('only counts tasks assigned to the candidates themselves', async () => {
     ctx = await makeTestContext('2026-07-20');
     const tasks = createTaskService(ctx.storage);

@@ -133,7 +133,13 @@ export async function hydrateAll(
   horizonDays = 1,
 ): Promise<{ created: number }> {
   const horizonEnd = todayPlus(horizonDays);
-  const defs = await storage.listDefinitions();
+  // Constrained tasks must claim their eligible people before broader tasks
+  // are balanced across the remaining capacity. Keep the original storage
+  // order for ties so hydration remains deterministic apart from the
+  // assignee tie-break in resolveAutoAssignee().
+  const defs = [...(await storage.listDefinitions())].sort(
+    (a, b) => (a.autoAssignableTo?.length ?? 0) - (b.autoAssignableTo?.length ?? 0),
+  );
   let created = 0;
   for (const def of defs) {
     created += await hydrateDefinition(storage, def, horizonEnd);
