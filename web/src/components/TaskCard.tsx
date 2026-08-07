@@ -75,8 +75,10 @@ export function TaskCard({ instance, today, overdue, onChanged }: TaskCardProps)
               </span>
             ) : (
               <span>
-                {pointsForCompletionToday(instance.points ?? 0, instance.dueDate, today)} pt
-                {pointsForCompletionToday(instance.points ?? 0, instance.dueDate, today) === 1 ? '' : 's'}
+                {pointsForCompletionToday(instance.points ?? 0, instance.occurrenceDate, instance.dueDate, today)} pt
+                {pointsForCompletionToday(instance.points ?? 0, instance.occurrenceDate, instance.dueDate, today) === 1
+                  ? ''
+                  : 's'}
               </span>
             )}
             {/* "for" = the occurrence day — when the task becomes actionable.

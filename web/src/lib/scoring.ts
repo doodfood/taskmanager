@@ -13,9 +13,14 @@ function dateValue(date: string): number {
 }
 
 /** Calculate the points a task would award if completed on `completionDate`. */
-export function pointsForCompletionToday(faceValue: number, dueDate: string, completionDate: string): number {
+export function pointsForCompletionToday(
+  faceValue: number,
+  occurrenceDate: string,
+  dueDate: string,
+  completionDate: string,
+): number {
   const daysLate = Math.round((dateValue(completionDate) - dateValue(dueDate)) / 86_400_000);
-  if (daysLate < 0) return Math.max(MIN_AWARD, faceValue + EARLY_BONUS);
-  if (daysLate === 0) return Math.max(MIN_AWARD, faceValue);
+  if (completionDate < occurrenceDate) return Math.max(MIN_AWARD, faceValue + EARLY_BONUS);
+  if (daysLate <= 0) return Math.max(MIN_AWARD, faceValue);
   return Math.max(MIN_AWARD, faceValue - daysLate * LATE_PENALTY_PER_DAY);
 }

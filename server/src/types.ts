@@ -98,7 +98,7 @@ export interface TaskInstance {
 
 // ---------- Points ledger ----------
 
-/** How the completion date compared to the due date, for display. */
+/** How the completion date compared to the occurrence/due window, for display. */
 export type PointTiming = 'early' | 'on-time' | 'late';
 
 /**

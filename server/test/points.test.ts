@@ -46,6 +46,7 @@ describe('points — grants on completion', () => {
     const [instance] = await ctx.storage.listInstances();
     expect(instance.dueDate).toBe('2026-07-23');
 
+    setSpoofedDate('2026-07-19T09:00:00'); // before the occurrence date
     const completed = await tasks.complete(instance.id, alice.id);
     expect(completed.pointsAwarded).toBe(25); // 20 + 5 early bonus
 
@@ -79,6 +80,20 @@ describe('points — grants on completion', () => {
     expect(completed.pointsAwarded).toBe(10);
     const [grant] = grantsOf(await ctx.storage.listPointEvents());
     expect(grant).toMatchObject({ points: 10, timing: 'on-time', daysLate: 0 });
+  });
+
+  it('grants face value on the occurrence date even when the due date is later', async () => {
+    ctx = await makeTestContext('2026-07-25'); // Saturday
+    const tasks = createTaskService(ctx.storage);
+    const [alice] = ctx.users;
+
+    await tasks.createDefinition({ title: 'Weekend task', recurrence: 'none', points: 10, dueOffsetDays: 1 });
+    const [instance] = await ctx.storage.listInstances();
+    expect(instance.occurrenceDate).toBe('2026-07-25');
+    expect(instance.dueDate).toBe('2026-07-26');
+
+    const completed = await tasks.complete(instance.id, alice.id);
+    expect(completed.pointsAwarded).toBe(10);
   });
 
   it('grants face value −1 per day late, floored at 1', async () => {

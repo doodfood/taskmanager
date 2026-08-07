@@ -28,7 +28,7 @@ export function createPointsService(storage: StorageProvider) {
     // `?? 0`: legacy instances predate the points field; the 1-point floor
     // in computeAward still guarantees a minimum award.
     const faceValue = instance.points ?? 0;
-    const award = computeAward(faceValue, instance.dueDate, todayStr());
+    const award = computeAward(faceValue, instance.occurrenceDate, instance.dueDate, todayStr());
     const grant: PointGrant = {
       id: randomUUID(),
       kind: 'grant',

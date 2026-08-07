@@ -18,19 +18,24 @@ export interface Award {
 
 /**
  * The scoring rule, pure: derive the award from a task's face value and how
- * the completion date compares to the due date (both yyyy-MM-dd).
+ * the completion date compares to the occurrence and due dates (yyyy-MM-dd).
  *
- * - early (any number of days before due): face value + EARLY_BONUS
- * - on the due date: face value
+ * - before the occurrence/start date: face value + EARLY_BONUS
+ * - on or after the occurrence date through the due date: face value
  * - overdue: face value − LATE_PENALTY_PER_DAY per calendar day late
  * - always: floored at MIN_AWARD
  */
-export function computeAward(faceValue: number, dueDate: string, completionDate: string): Award {
+export function computeAward(
+  faceValue: number,
+  occurrenceDate: string,
+  dueDate: string,
+  completionDate: string,
+): Award {
   const lateBy = differenceInCalendarDays(parseISO(completionDate), parseISO(dueDate));
-  if (lateBy < 0) {
+  if (completionDate < occurrenceDate) {
     return { points: Math.max(MIN_AWARD, faceValue + EARLY_BONUS), timing: 'early', daysLate: 0 };
   }
-  if (lateBy === 0) {
+  if (lateBy <= 0) {
     return { points: Math.max(MIN_AWARD, faceValue), timing: 'on-time', daysLate: 0 };
   }
   return { points: Math.max(MIN_AWARD, faceValue - lateBy * LATE_PENALTY_PER_DAY), timing: 'late', daysLate: lateBy };
