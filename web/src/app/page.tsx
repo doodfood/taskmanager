@@ -7,8 +7,9 @@ import { GamificationReset } from '@/components/GamificationReset';
 import { HydrationReset } from '@/components/HydrationReset';
 import { TaskCard } from '@/components/TaskCard';
 import { useUser } from '@/context/UserContext';
-import { getClock, listInstances } from '@/lib/api';
+import { getClockSafe, listInstances } from '@/lib/api';
 import { formatDateShort } from '@/lib/dates';
+import { SHOW_DEV_TOOLS } from '@/lib/env';
 import type { ClockState, TaskInstance } from '@/lib/types';
 
 /** Assignee-group keys that can't collide with a user UUID. */
@@ -20,12 +21,6 @@ const ANYONE = '__anyone__';
  * reload.
  */
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
-
-/**
- * Dev tools (clock spoofer, hydration/gamification resets) are only rendered
- * outside production. Set NEXT_PUBLIC_APP_ENV=production to hide them.
- */
-const SHOW_DEV_TOOLS = process.env.NEXT_PUBLIC_APP_ENV !== 'production';
 
 /** localStorage key for the per-device filter-chip selection. */
 const FILTER_STORAGE_KEY = 'tm.overviewFilters';
@@ -88,7 +83,7 @@ export default function OverviewPage() {
       // materialised task can hide here while showing on a dashboard (a
       // dueDate-based window did exactly that once dueOffsetDays pushed the
       // due date past it).
-      const [clk, items] = await Promise.all([getClock(), listInstances({ status: 'pending' })]);
+      const [clk, items] = await Promise.all([getClockSafe(), listInstances({ status: 'pending' })]);
       setClock(clk);
       setPending(items);
       setError(null);

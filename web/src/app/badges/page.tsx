@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { useUser } from '@/context/UserContext';
-import { getClock, getUserBadges, listUsers } from '@/lib/api';
+import { getClockSafe, getUserBadges, listUsers } from '@/lib/api';
 import { addDaysStr, formatDateShort, mondayOf, toDateStr } from '@/lib/dates';
 import type { AwardedBadge, BadgeTier, EarnedBadge, User, UserBadges } from '@/lib/types';
 
@@ -48,7 +48,7 @@ export default function BadgesPage() {
 
   const load = useCallback(async () => {
     try {
-      const [clock, users] = await Promise.all([getClock(), listUsers()]);
+      const [clock, users] = await Promise.all([getClockSafe(), listUsers()]);
       const badges = await Promise.all(users.map((u) => getUserBadges(u.id)));
       setRows(users.map((user, i) => ({ user, badges: badges[i] })));
       setToday(clock.today);

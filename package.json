@@ -9,6 +9,11 @@
     "dev:server": "npm --prefix server run dev",
     "dev:web": "npm --prefix web run dev",
     "build": "npm --prefix server run build && npm --prefix web run build",
+    "start": "concurrently -n server,web -c blue,green \"npm:start:server\" \"npm:start:web\"",
+    "start:server": "npm --prefix server run start",
+    "start:web": "npm --prefix web run start",
+    "build:prod": "node scripts/build-prod.mjs",
+    "start:prod": "node scripts/start-prod.mjs",
     "test": "npm --prefix server test",
     "seed": "npm --prefix server run seed",
     "lint": "npm --prefix server run lint && npm --prefix web run lint"

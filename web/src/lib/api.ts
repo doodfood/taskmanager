@@ -1,3 +1,5 @@
+import { toDateStr } from './dates';
+import { SHOW_DEV_TOOLS } from './env';
 import type { ClockState, LeaderboardEntry, Recurrence, TaskDefinition, TaskInstance, User, UserBadges } from './types';
 
 const API_URL = '/api';
@@ -135,6 +137,25 @@ export const getLeaderboard = (weeks: LeaderboardWeeks = 1) =>
 // ---- debug clock (dev tool) -------------------------------------------------
 
 export const getClock = () => request<ClockState>('/debug/clock');
+
+/**
+ * Clock for the board/badges pages. In dev it reads the (possibly spoofed)
+ * server clock from /api/debug/clock. In production that endpoint is not
+ * mounted (it would 404), so we return a real-time local fallback instead —
+ * the server is never spoofed in prod, so local "today" is correct.
+ */
+export function getClockSafe(): Promise<ClockState> {
+  if (!SHOW_DEV_TOOLS) {
+    const now = new Date();
+    return Promise.resolve({
+      spoofed: false,
+      spoofedDate: null,
+      now: now.toISOString(),
+      today: toDateStr(now),
+    });
+  }
+  return getClock();
+}
 
 /** Rollover outcome returned alongside the clock state after a spoof jump. */
 export interface ClockRollover {
