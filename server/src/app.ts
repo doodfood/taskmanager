@@ -1,5 +1,6 @@
 import cors from 'cors';
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
+import { config } from './config.js';
 import { badgesRouter } from './routes/badges.js';
 import { debugRouter } from './routes/debug.js';
 import { leaderboardRouter } from './routes/leaderboard.js';
@@ -35,7 +36,12 @@ export function buildApp(storage: StorageProvider): Express {
   app.use('/api/task-instances', instancesRouter(tasks));
   app.use('/api/leaderboard', leaderboardRouter(leaderboard));
   app.use('/api/badges', badgesRouter(badges));
-  app.use('/api/debug', debugRouter(storage));
+
+  // Dev-tool routes (clock spoofer, hydration/gamification resets) are only
+  // mounted outside production — in prod they 404 like any unknown route.
+  if (config.isDev) {
+    app.use('/api/debug', debugRouter(storage));
+  }
 
   app.use((_req: Request, res: Response) => {
     res.status(404).json({ error: 'not found' });

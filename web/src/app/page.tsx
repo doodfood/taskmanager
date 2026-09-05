@@ -21,6 +21,12 @@ const ANYONE = '__anyone__';
  */
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
 
+/**
+ * Dev tools (clock spoofer, hydration/gamification resets) are only rendered
+ * outside production. Set NEXT_PUBLIC_APP_ENV=production to hide them.
+ */
+const SHOW_DEV_TOOLS = process.env.NEXT_PUBLIC_APP_ENV !== 'production';
+
 /** localStorage key for the per-device filter-chip selection. */
 const FILTER_STORAGE_KEY = 'tm.overviewFilters';
 
@@ -292,9 +298,13 @@ export default function OverviewPage() {
         )}
       </div>
 
-      <ClockSpoofer clock={clock} onChanged={() => void load()} />
-      <HydrationReset onChanged={() => void load()} />
-      <GamificationReset onChanged={() => void load()} />
+      {SHOW_DEV_TOOLS && (
+        <>
+          <ClockSpoofer clock={clock} onChanged={() => void load()} />
+          <HydrationReset onChanged={() => void load()} />
+          <GamificationReset onChanged={() => void load()} />
+        </>
+      )}
     </main>
   );
 }

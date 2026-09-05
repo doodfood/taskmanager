@@ -1,6 +1,16 @@
 import path from 'node:path';
+import dotenv from 'dotenv';
+
+// Load server/.env (if present) before reading any env vars below.
+dotenv.config();
+
+const nodeEnv = process.env.NODE_ENV ?? 'development';
 
 export const config = {
+  /** Runtime environment: 'development' | 'production' | … */
+  nodeEnv,
+  /** True unless NODE_ENV=production — gates the /api/debug dev-tool routes. */
+  isDev: nodeEnv !== 'production',
   port: Number(process.env.PORT ?? 4000),
   dataDir: process.env.DATA_DIR ?? path.resolve(process.cwd(), 'data'),
   /** How often the hydration loop runs. Default: 60 minutes. */
