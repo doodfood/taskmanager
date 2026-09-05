@@ -4,3 +4,4 @@ coverage/
 server/data/
 *.log
 .DS_Store
+proddatabak
