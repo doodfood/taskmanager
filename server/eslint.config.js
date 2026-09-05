@@ -16,4 +16,14 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' , varsIgnorePattern: '^_' }],
     },
   },
+  {
+    // Plain-JS build/utility scripts run under Node, not the browser.
+    files: ['**/*.mjs'],
+    languageOptions: {
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+      },
+    },
+  },
 );

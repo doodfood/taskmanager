@@ -1,6 +1,6 @@
 # Task Manager — Core API
 
-Node.js + Express + TypeScript backend for the household task manager. JSON-file persistence behind a storage-provider interface, recurring-task hydration loop every 60 minutes, and a spoofable clock for scenario testing.
+Node.js + Express + TypeScript backend for the household task manager. Persistence is behind a storage-provider interface: SQLite (via the built-in `node:sqlite` driver) by default, with legacy JSON-file storage available via `STORAGE=json`. Recurring-task hydration loop every 60 minutes, and a spoofable clock for scenario testing.
 
 ## Quick start
 
@@ -11,22 +11,30 @@ npm run dev        # tsx watch, http://localhost:4000
 
 First run creates `data/` and seeds the household users (override with `SEED_USERS=Name1,Name2`). Delete `server/data/` at any time to reset everything, then run `npm run seed` (with the API up) to re-insert the users and the cleaning-rota task definitions — see `scripts/seed.ts`.
 
+## Storage & migrations
+
+- **Backend**: `STORAGE=sqlite` (default) uses `node:sqlite` — no native deps, so it runs on the Raspberry Pi without an ARM build step. `STORAGE=json` reverts to the legacy JSON files. Both implement `src/storage/StorageProvider.ts`; the choice is made in `src/index.ts`.
+- **Schema migrations**: numbered `.sql` files in `src/storage/migrations/` are applied forward-only by `src/storage/migrate.ts` on boot, tracked in a `schema_migrations` table. To change the schema, add a new `00N_description.sql` — existing databases are migrated, never wiped.
+- **JSON → SQLite import** (one-off, idempotent): `npm run migrate:json-to-sqlite -- [jsonDir] [dataDir]`. It only populates an empty database (skips if users already exist). On the Pi the deploy runs the compiled equivalent (`node dist/scripts/import-json-to-sqlite.js`) automatically.
+
 ## Scripts
 
 | Command | Purpose |
 |---------|---------|
 | `npm run dev` | Dev server with watch mode |
 | `npm run build` / `npm start` | Compile to `dist/` and run |
-| `npm test` | Vitest suite (171 tests: storage, hydration, services, badges, API) |
+| `npm test` | Vitest suite (storage, hydration, services, badges, API) |
 | `npm run lint` | ESLint (flat config, typescript-eslint) |
 | `npm run typecheck` | `tsc --noEmit` |
+| `npm run migrate:json-to-sqlite` | One-off, idempotent JSON → SQLite data import |
 
 ## Configuration (env vars)
 
 | Var | Default | Purpose |
 |-----|---------|---------|
 | `PORT` | `4000` | HTTP port |
-| `DATA_DIR` | `./data` | Where JSON files live |
+| `DATA_DIR` | `./data` | Where the SQLite db / JSON files live |
+| `STORAGE` | `sqlite` | `sqlite` (default) or `json` storage backend |
 | `HYDRATION_INTERVAL_MS` | `3600000` | Hydration loop interval (60 min) |
 | `HYDRATION_HORIZON_DAYS` | `5` | How far ahead of today to materialise occurrences |
 | `SEED_USERS` | `Akhil,Eriko,Maya,Neha` | Comma-separated names for first-run seeding |

@@ -13,6 +13,11 @@ export const config = {
   isDev: nodeEnv !== 'production',
   port: Number(process.env.PORT ?? 4000),
   dataDir: process.env.DATA_DIR ?? path.resolve(process.cwd(), 'data'),
+  /**
+   * Storage backend: 'sqlite' (default) or 'json'. Set STORAGE=json to revert
+   * to the legacy JSON-file provider.
+   */
+  storage: (process.env.STORAGE ?? 'sqlite').toLowerCase() === 'json' ? 'json' : 'sqlite',
   /** How often the hydration loop runs. Default: 60 minutes. */
   hydrationIntervalMs: Number(process.env.HYDRATION_INTERVAL_MS ?? 60 * 60 * 1000),
   /**

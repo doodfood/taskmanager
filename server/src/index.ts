@@ -4,6 +4,8 @@ import { config } from './config.js';
 import { startScheduler } from './scheduler.js';
 import { createUserService } from './services/userService.js';
 import { JsonFileStorage } from './storage/JsonFileStorage.js';
+import { SqliteStorage } from './storage/SqliteStorage.js';
+import type { StorageProvider } from './storage/StorageProvider.js';
 
 async function main(): Promise<void> {
   if (config.spoofDate) {
@@ -11,8 +13,12 @@ async function main(): Promise<void> {
     console.log(`[boot] clock spoofed to ${config.spoofDate}`);
   }
 
-  // Swap this one line for a DB-backed StorageProvider when ready.
-  const storage = await JsonFileStorage.create(config.dataDir);
+  // Storage backend: SQLite by default, legacy JSON files when STORAGE=json.
+  const storage: StorageProvider =
+    config.storage === 'json'
+      ? await JsonFileStorage.create(config.dataDir)
+      : SqliteStorage.create(config.dataDir);
+  console.log(`[boot] storage backend: ${config.storage}`);
 
   await createUserService(storage).ensureSeeded(config.seedUsers);
 

@@ -48,6 +48,11 @@ const PI_DIR = process.env.PI_DIR ?? '~/taskmanager';
 const SERVICE = process.env.PI_SERVICE ?? 'taskmanager.service';
 const TARGET = `${PI_USER}@${PI_HOST}`;
 
+// The Pi server's data dir (server runs with cwd=server/, DATA_DIR unset).
+const PI_DATA_DIR = `${PI_DIR}/server/data`;
+// Local dir the Pi DB is backed up to before each deploy.
+const LOCAL_BACKUP_ROOT = path.join(root, 'proddatabak');
+
 // nvm's default install location on the Pi; sourcing it puts npm on PATH.
 const NVM_SETUP = 'export NVM_DIR="$HOME/.nvm"; [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"';
 
@@ -151,6 +156,41 @@ function runSshStdin(label, remoteCmd, input) {
   }
 }
 
+/**
+ * Back up the Pi's data dir (SQLite db + legacy JSON) to a timestamped folder
+ * under proddatabak/ on this machine. Runs before anything else touches the
+ * Pi. Uses scp -r; if the remote data dir doesn't exist yet (first deploy) the
+ * backup is skipped with a warning rather than failing the deploy.
+ */
+function backupPiData() {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const dest = path.join(LOCAL_BACKUP_ROOT, `pi-backup-${stamp}`);
+  mkdirSync(dest, { recursive: true });
+
+  // Detect the remote data dir first so a missing dir doesn't error scp.
+  const probe = spawnSync('ssh', [TARGET, `test -d ${PI_DATA_DIR} && echo yes || echo no`], {
+    cwd: root,
+    encoding: 'utf8',
+    env: { ...process.env, ...sshEnv },
+  });
+  if (!probe.stdout || !probe.stdout.trim().endsWith('yes')) {
+    console.log('\n[deploy] no existing data dir on Pi — skipping backup (first deploy).');
+    return;
+  }
+
+  console.log(`\n[deploy] backing up Pi data -> ${dest}...`);
+  const result = spawnSync('scp', ['-r', `${TARGET}:${PI_DATA_DIR}/.`, dest], {
+    cwd: root,
+    stdio: 'inherit',
+    env: { ...process.env, ...sshEnv },
+  });
+  if (result.status !== 0) {
+    console.error('[deploy] Pi data backup failed — aborting before any changes.');
+    cleanupAskpass();
+    process.exit(result.status ?? 1);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Deploy steps
 // ---------------------------------------------------------------------------
@@ -181,6 +221,10 @@ async function main() {
   // 3. Prompt once for the Pi password and arm the askpass helper.
   const password = await promptPassword(`[deploy] password for ${TARGET}: `);
   sshEnv = setupAskpass(password);
+
+  // 3a. Back up the Pi's existing data (SQLite db + JSON) locally before
+  //     changing anything. Abort the deploy if the backup fails.
+  backupPiData();
 
   // 4. Make sure the target directories exist on the Pi.
   run('prepare remote dirs', 'ssh', [
@@ -214,6 +258,16 @@ async function main() {
   //    Source nvm first so npm is on PATH for the non-interactive shell.
   run('install server deps on Pi', 'ssh', [TARGET, `${NVM_SETUP} && cd ${PI_DIR}/server && npm install --omit=dev`]);
   run('install web deps on Pi', 'ssh', [TARGET, `${NVM_SETUP} && cd ${PI_DIR}/web/dist-standalone && npm install --omit=dev`]);
+
+  // 8a. Import legacy JSON data into SQLite (first deploy only — the import is
+  //     idempotent and skips when the db already has users). Schema migrations
+  //     run automatically on server boot and only ever advance the schema
+  //     forward; an existing database is never wiped. The server reads/writes
+  //     the db at ${PI_DATA_DIR}/taskmanager.db.
+  run('import JSON -> SQLite on Pi', 'ssh', [
+    TARGET,
+    `${NVM_SETUP} && cd ${PI_DIR}/server && node dist/scripts/import-json-to-sqlite.js ${PI_DATA_DIR} ${PI_DATA_DIR}`,
+  ]);
 
   // 9. Restart the service to pick up the new build.
   run(`restart ${SERVICE}`, 'ssh', [TARGET, `sudo systemctl restart ${SERVICE}`]);

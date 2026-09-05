@@ -6,8 +6,9 @@
   "description": "Household task manager core API (JSON file storage, recurring task hydration)",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-migrations.mjs",
     "start": "node dist/index.js",
+    "migrate:json-to-sqlite": "tsx scripts/import-json-to-sqlite.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "seed": "tsx scripts/seed.ts",
