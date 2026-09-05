@@ -9,3 +9,4 @@ proddatabak
 # local env files
 .env
 server/.env
+web/deploy-staging

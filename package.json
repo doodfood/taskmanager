@@ -14,6 +14,7 @@
     "start:web": "npm --prefix web run start",
     "build:prod": "node scripts/build-prod.mjs",
     "start:prod": "node scripts/start-prod.mjs",
+    "deploy": "node scripts/deploy.mjs",
     "test": "npm --prefix server test",
     "seed": "npm --prefix server run seed",
     "lint": "npm --prefix server run lint && npm --prefix web run lint"
